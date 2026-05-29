@@ -79,7 +79,7 @@ export function getEncryptionKey() {
     }
 
     return createHash("sha256")
-      .update("dev-only-generate-download-url-encryption-key")
+      .update("dev-only-s3-signer-encryption-key")
       .digest();
   }
 

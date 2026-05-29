@@ -1,4 +1,4 @@
-# GURL
+# S3 Signer
 
 Next.js service for creating short download links that redirect to fresh
 S3-compatible OSS SigV4 presigned URLs.
@@ -23,9 +23,9 @@ openssl rand -base64 32
 
 Important URLs:
 
-- Main service: `https://gurl.honahec.cc`
-- Download base: `https://api.honahec.cc/download`
-- OIDC callback: `https://gurl.honahec.cc/api/auth/callback/pocketid`
+- Main service: `{PUBLIC_APP_URL}`
+- Download base: `{PUBLIC_DOWNLOAD_BASE_URL}`
+- OIDC callback: `{PUBLIC_APP_URL}/api/auth/callback/pocketid`
 
 ## Development
 

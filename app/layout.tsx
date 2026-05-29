@@ -16,7 +16,7 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "GURL",
+  title: "S3 Signer",
   description: "S3-compatible OSS download link manager",
 };
 

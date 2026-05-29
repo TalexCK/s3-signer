@@ -1,5 +1,5 @@
 {
-  "name": "generate-download-url",
+  "name": "s3-signer",
   "version": "0.1.0",
   "private": true,
   "scripts": {

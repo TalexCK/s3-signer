@@ -1,12 +1,13 @@
 services:
   app:
+    image: s3-signer-app:latest
     build:
       context: .
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgres://gurl:gurl@postgres:5432/gurl
+      DATABASE_URL: postgres://s3_signer:s3_signer@postgres:5432/s3_signer
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-https://gurl.honahec.cc}
       AUTH_URL: ${AUTH_URL:-https://gurl.honahec.cc}
@@ -25,11 +26,11 @@ services:
   postgres:
     image: postgres:17-alpine
     environment:
-      POSTGRES_DB: gurl
-      POSTGRES_USER: gurl
-      POSTGRES_PASSWORD: gurl
+      POSTGRES_DB: s3_signer
+      POSTGRES_USER: s3_signer
+      POSTGRES_PASSWORD: s3_signer
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U gurl -d gurl"]
+      test: ["CMD-SHELL", "pg_isready -U s3_signer -d s3_signer"]
       interval: 10s
       timeout: 5s
       retries: 5

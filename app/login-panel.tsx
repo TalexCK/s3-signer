@@ -26,7 +26,7 @@ export function LoginPanel() {
     <main className="flex min-h-svh items-center justify-center bg-background p-6">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>GURL</CardTitle>
+          <CardTitle>S3 Signer</CardTitle>
           <CardDescription>OSS download links with short-lived signatures.</CardDescription>
           <CardAction>
             <Tooltip>
