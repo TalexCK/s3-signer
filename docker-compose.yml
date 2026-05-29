@@ -1,6 +1,6 @@
 services:
   app:
-    image: s3-signer-app:latest
+    image: s3-signer:latest
     build:
       context: .
     depends_on:
