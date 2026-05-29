@@ -18,6 +18,19 @@ describe("validators", () => {
     expect(result.isDefault).toBe(true);
   });
 
+  it("rejects non-HTTPS OSS endpoints", () => {
+    expect(() =>
+      createProfileSchema.parse({
+        name: "Local",
+        endpoint: "http://127.0.0.1:9000",
+        region: "local",
+        bucket: "bucket",
+        accessKeyId: "access-key",
+        secretAccessKey: "secret",
+      })
+    ).toThrow("endpoint must be an HTTPS URL");
+  });
+
   it("bounds link validity to the stored database window", () => {
     expect(() =>
       createLinkSchema.parse({

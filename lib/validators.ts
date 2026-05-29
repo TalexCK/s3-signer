@@ -4,8 +4,8 @@ const urlSchema = z
   .string()
   .trim()
   .url()
-  .refine((value) => value.startsWith("https://") || value.startsWith("http://"), {
-    message: "endpoint must be an absolute URL",
+  .refine((value) => new URL(value).protocol === "https:", {
+    message: "endpoint must be an HTTPS URL",
   });
 
 export const createProfileSchema = z.object({

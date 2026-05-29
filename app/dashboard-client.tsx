@@ -249,21 +249,29 @@ export function DashboardClient({ user }: DashboardClientProps) {
     }
   }
 
-  async function loadObjects(next = false) {
+  async function loadObjects(
+    next = false,
+    prefixOverride?: string,
+    continuationOverride?: string | null
+  ) {
     if (!selectedProfileId) {
       return;
     }
 
     setLoading(true);
     try {
+      const requestPrefix = prefixOverride ?? prefix;
       const params = new URLSearchParams({
         profileId: selectedProfileId,
-        prefix,
+        prefix: requestPrefix,
       });
       if (next && nextContinuationToken) {
         params.set("continuationToken", nextContinuationToken);
-      } else if (continuationToken) {
-        params.set("continuationToken", continuationToken);
+      } else {
+        const token = continuationOverride ?? continuationToken;
+        if (token) {
+          params.set("continuationToken", token);
+        }
       }
 
       const data = await api<{
@@ -361,12 +369,13 @@ export function DashboardClient({ user }: DashboardClientProps) {
   }
 
   function openObjectBrowser() {
+    const initialPrefix = objectKey;
     setObjects([]);
-    setPrefix(objectKey);
+    setPrefix(initialPrefix);
     setContinuationToken(null);
     setNextContinuationToken(undefined);
     setObjectDialogOpen(true);
-    void loadObjects();
+    void loadObjects(false, initialPrefix, null);
   }
 
   const isDark = resolvedTheme === "dark";
@@ -890,7 +899,7 @@ export function DashboardClient({ user }: DashboardClientProps) {
                 placeholder="prefix/"
               />
               <InputGroupAddon align="inline-end">
-                <InputGroupButton onClick={() => loadObjects()}>
+                <InputGroupButton onClick={() => loadObjects(false, prefix, null)}>
                   Search
                 </InputGroupButton>
               </InputGroupAddon>

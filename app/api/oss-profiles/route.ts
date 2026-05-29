@@ -14,7 +14,7 @@ export async function GET() {
     const user = await requireUser();
     const result = await query(
       `SELECT * FROM oss_profiles
-       WHERE owner_sub = $1
+       WHERE owner_sub = $1 AND disabled_at IS NULL
        ORDER BY is_default DESC, created_at DESC`,
       [user.id]
     );

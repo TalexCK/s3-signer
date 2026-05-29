@@ -19,7 +19,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     const payload = updateProfileSchema.parse(await request.json());
 
     const existing = await query(
-      "SELECT * FROM oss_profiles WHERE id = $1 AND owner_sub = $2",
+      "SELECT * FROM oss_profiles WHERE id = $1 AND owner_sub = $2 AND disabled_at IS NULL",
       [id, user.id]
     );
     if (existing.rowCount === 0) {
@@ -73,15 +73,24 @@ export async function DELETE(_request: Request, context: RouteContext) {
     const { id } = await context.params;
 
     const profile = await withTransaction(async (client) => {
-      const result = await client.query(
+      const existing = await client.query(
+        "SELECT is_default FROM oss_profiles WHERE id = $1 AND owner_sub = $2 FOR UPDATE",
+        [id, user.id]
+      );
+      if (existing.rowCount === 0) {
+        throw new HttpError(404, "OSS profile not found");
+      }
+
+      const wasDefault = !!existing.rows[0].is_default;
+      await client.query(
         `UPDATE oss_profiles
          SET disabled_at = COALESCE(disabled_at, now()), is_default = false, updated_at = now()
          WHERE id = $1 AND owner_sub = $2
          RETURNING *`,
         [id, user.id]
       );
-      if (result.rowCount === 0) {
-        throw new HttpError(404, "OSS profile not found");
+      if (!wasDefault) {
+        return null;
       }
 
       const nextDefault = await client.query(
