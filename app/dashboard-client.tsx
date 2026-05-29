@@ -401,6 +401,7 @@ export function DashboardClient({ user }: DashboardClientProps) {
               <TooltipTrigger
                 render={
                   <Button
+                    type="button"
                     variant="outline"
                     size="icon-sm"
                     onClick={() => refreshAll()}
@@ -417,6 +418,7 @@ export function DashboardClient({ user }: DashboardClientProps) {
               <TooltipTrigger
                 render={
                   <Button
+                    type="button"
                     variant="outline"
                     size="icon-sm"
                     onClick={() => setTheme(isDark ? "light" : "dark")}
@@ -432,6 +434,7 @@ export function DashboardClient({ user }: DashboardClientProps) {
               <TooltipTrigger
                 render={
                   <Button
+                    type="button"
                     variant="outline"
                     size="icon-sm"
                     onClick={() =>
@@ -470,7 +473,12 @@ export function DashboardClient({ user }: DashboardClientProps) {
                     : "No OSS profile selected"}
                 </CardDescription>
                 <CardAction>
-                  <Button variant="outline" size="sm" onClick={openNewProfile}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={openNewProfile}
+                  >
                     <PlusIcon data-icon="inline-start" />
                     Profile
                   </Button>
@@ -565,7 +573,10 @@ export function DashboardClient({ user }: DashboardClientProps) {
                       </Field>
                     </div>
                     <div className="flex justify-end">
-                      <Button disabled={isBusy("create-link") || !profiles.length}>
+                      <Button
+                        type="submit"
+                        disabled={isBusy("create-link") || !profiles.length}
+                      >
                         <BusyIcon
                           busy={isBusy("create-link")}
                           idle={<CopyIcon data-icon="inline-start" />}
@@ -585,7 +596,7 @@ export function DashboardClient({ user }: DashboardClientProps) {
                 <CardTitle>OSS Profiles</CardTitle>
                 <CardDescription>{profiles.length} active profiles</CardDescription>
                 <CardAction>
-                  <Button onClick={openNewProfile}>
+                  <Button type="button" onClick={openNewProfile}>
                     <PlusIcon data-icon="inline-start" />
                     Add profile
                   </Button>
@@ -646,7 +657,7 @@ export function DashboardClient({ user }: DashboardClientProps) {
                       </EmptyDescription>
                     </EmptyHeader>
                     <EmptyContent>
-                      <Button onClick={openNewProfile}>
+                      <Button type="button" onClick={openNewProfile}>
                         <PlusIcon data-icon="inline-start" />
                         Add profile
                       </Button>
@@ -664,6 +675,7 @@ export function DashboardClient({ user }: DashboardClientProps) {
                 <CardDescription>{links.length} recent links</CardDescription>
                 <CardAction>
                   <Button
+                    type="button"
                     variant="outline"
                     size="sm"
                     onClick={cleanupLinks}
@@ -904,7 +916,7 @@ export function DashboardClient({ user }: DashboardClientProps) {
               >
                 Cancel
               </Button>
-              <Button disabled={isBusy("save-profile")}>
+              <Button type="submit" disabled={isBusy("save-profile")}>
                 <BusyIcon
                   busy={isBusy("save-profile")}
                   idle={<CheckCircleIcon data-icon="inline-start" />}
@@ -962,6 +974,7 @@ export function DashboardClient({ user }: DashboardClientProps) {
                         <TableCell>{object.storageClass ?? ""}</TableCell>
                         <TableCell className="text-right">
                           <Button
+                            type="button"
                             size="sm"
                             variant="outline"
                             onClick={() => {
@@ -1044,6 +1057,7 @@ function ProfileActions({
       <DropdownMenuTrigger
         render={
           <Button
+            type="button"
             variant="ghost"
             size="icon-sm"
             disabled={testing || settingDefault || deleting}
