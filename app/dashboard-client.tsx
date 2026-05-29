@@ -1,6 +1,13 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type FormEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { signOut } from "next-auth/react";
 import { toast } from "sonner";
 import {
@@ -9,6 +16,7 @@ import {
   FileIcon,
   FolderOpenIcon,
   KeyRoundIcon,
+  Loader2Icon,
   LogOutIcon,
   MoonIcon,
   MoreHorizontalIcon,
@@ -146,12 +154,32 @@ export function DashboardClient({ user }: DashboardClientProps) {
   const [nextContinuationToken, setNextContinuationToken] = useState<
     string | undefined
   >();
-  const [loading, setLoading] = useState(false);
+  const [busyActions, setBusyActions] = useState<Set<string>>(() => new Set());
 
   const selectedProfile = useMemo(
     () => profiles.find((profile) => profile.id === selectedProfileId) ?? null,
     [profiles, selectedProfileId]
   );
+
+  const isBusy = useCallback(
+    (key: string) => busyActions.has(key),
+    [busyActions]
+  );
+
+  const runBusy = useCallback(async (key: string, action: () => Promise<void>) => {
+    setBusyActions((current) => new Set(current).add(key));
+    try {
+      await action();
+    } catch (error) {
+      toast.error(messageOf(error));
+    } finally {
+      setBusyActions((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+    }
+  }, []);
 
   const refreshProfiles = useCallback(async () => {
     const data = await api<{ profiles: PublicOssProfile[] }>("/api/oss-profiles");
@@ -172,15 +200,10 @@ export function DashboardClient({ user }: DashboardClientProps) {
   }, []);
 
   const refreshAll = useCallback(async () => {
-    setLoading(true);
-    try {
+    await runBusy("refresh", async () => {
       await Promise.all([refreshProfiles(), refreshLinks()]);
-    } catch (error) {
-      toast.error(messageOf(error));
-    } finally {
-      setLoading(false);
-    }
-  }, [refreshLinks, refreshProfiles]);
+    });
+  }, [refreshLinks, refreshProfiles, runBusy]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -196,8 +219,7 @@ export function DashboardClient({ user }: DashboardClientProps) {
       return;
     }
 
-    setLoading(true);
-    try {
+    await runBusy("create-link", async () => {
       const payload = {
         profileId: selectedProfileId,
         objectKey,
@@ -214,17 +236,12 @@ export function DashboardClient({ user }: DashboardClientProps) {
       toast.success("Download link copied.");
       setObjectKey("");
       setDownloadFilename("");
-    } catch (error) {
-      toast.error(messageOf(error));
-    } finally {
-      setLoading(false);
-    }
+    });
   }
 
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setLoading(true);
-    try {
+    await runBusy("save-profile", async () => {
       const payload = {
         ...profileForm,
         sessionToken: profileForm.sessionToken || null,
@@ -242,11 +259,7 @@ export function DashboardClient({ user }: DashboardClientProps) {
       setSelectedProfileId(data.profile.id);
       setProfileDialogOpen(false);
       toast.success(editingProfile ? "OSS profile updated." : "OSS profile saved.");
-    } catch (error) {
-      toast.error(messageOf(error));
-    } finally {
-      setLoading(false);
-    }
+    });
   }
 
   async function loadObjects(
@@ -258,8 +271,7 @@ export function DashboardClient({ user }: DashboardClientProps) {
       return;
     }
 
-    setLoading(true);
-    try {
+    await runBusy(next ? "objects-next" : "objects-search", async () => {
       const requestPrefix = prefixOverride ?? prefix;
       const params = new URLSearchParams({
         profileId: selectedProfileId,
@@ -282,68 +294,61 @@ export function DashboardClient({ user }: DashboardClientProps) {
       setObjects(data.objects);
       setContinuationToken(next ? nextContinuationToken ?? null : null);
       setNextContinuationToken(data.nextContinuationToken);
-    } catch (error) {
-      toast.error(messageOf(error));
-    } finally {
-      setLoading(false);
-    }
+    });
   }
 
   async function deleteLink(link: LinkResponse) {
     if (!window.confirm(`Delete link for ${link.objectKey}?`)) {
       return;
     }
-    try {
+    await runBusy(`delete-link:${link.id}`, async () => {
       await api(`/api/links/${link.id}`, { method: "DELETE" });
       setLinks((current) => current.filter((item) => item.id !== link.id));
       toast.success("Download link deleted.");
-    } catch (error) {
-      toast.error(messageOf(error));
-    }
+    });
   }
 
   async function deleteProfile(profile: PublicOssProfile) {
     if (!window.confirm(`Disable profile ${profile.name}?`)) {
       return;
     }
-    try {
+    await runBusy(`delete-profile:${profile.id}`, async () => {
       await api(`/api/oss-profiles/${profile.id}`, { method: "DELETE" });
       await refreshProfiles();
       toast.success("OSS profile disabled.");
-    } catch (error) {
-      toast.error(messageOf(error));
-    }
+    });
   }
 
   async function setDefaultProfile(profile: PublicOssProfile) {
-    try {
+    await runBusy(`default-profile:${profile.id}`, async () => {
       await api(`/api/oss-profiles/${profile.id}/default`, { method: "POST" });
       await refreshProfiles();
       toast.success("Default profile updated.");
-    } catch (error) {
-      toast.error(messageOf(error));
-    }
+    });
   }
 
   async function testProfile(profile: PublicOssProfile) {
-    try {
+    await runBusy(`test-profile:${profile.id}`, async () => {
       await api(`/api/oss-profiles/${profile.id}/test`, { method: "POST" });
       toast.success("Bucket access verified.");
-    } catch (error) {
-      toast.error(messageOf(error));
-    }
+    });
+  }
+
+  async function copyLink(url: string, id: string) {
+    await runBusy(`copy-link:${id}`, async () => {
+      await copyText(url);
+      toast.success("Download link copied.");
+    });
   }
 
   async function cleanupLinks() {
-    try {
+    await runBusy("cleanup-links", async () => {
       const data = await api<{ deletedCount: number }>("/api/links/cleanup", {
         method: "POST",
       });
       await refreshLinks();
       toast.success(`${data.deletedCount} inactive links archived.`);
-    } catch (error) {
-      toast.error(messageOf(error));
-    }
+    });
   }
 
   function openNewProfile() {
@@ -399,11 +404,11 @@ export function DashboardClient({ user }: DashboardClientProps) {
                     variant="outline"
                     size="icon-sm"
                     onClick={() => refreshAll()}
-                    disabled={loading}
+                    disabled={isBusy("refresh")}
                   />
                 }
               >
-                <RefreshCwIcon />
+                <BusyIcon busy={isBusy("refresh")} idle={<RefreshCwIcon />} />
                 <span className="sr-only">Refresh</span>
               </TooltipTrigger>
               <TooltipContent>Refresh</TooltipContent>
@@ -429,11 +434,16 @@ export function DashboardClient({ user }: DashboardClientProps) {
                   <Button
                     variant="outline"
                     size="icon-sm"
-                    onClick={() => signOut()}
+                    onClick={() =>
+                      runBusy("sign-out", async () => {
+                        await signOut();
+                      })
+                    }
+                    disabled={isBusy("sign-out")}
                   />
                 }
               >
-                <LogOutIcon />
+                <BusyIcon busy={isBusy("sign-out")} idle={<LogOutIcon />} />
                 <span className="sr-only">Sign out</span>
               </TooltipTrigger>
               <TooltipContent>Sign out</TooltipContent>
@@ -501,9 +511,12 @@ export function DashboardClient({ user }: DashboardClientProps) {
                         <InputGroupAddon align="inline-end">
                           <InputGroupButton
                             onClick={openObjectBrowser}
-                            disabled={!selectedProfileId}
+                            disabled={!selectedProfileId || isBusy("objects-search")}
                           >
-                            <FolderOpenIcon data-icon="inline-start" />
+                            <BusyIcon
+                              busy={isBusy("objects-search")}
+                              idle={<FolderOpenIcon data-icon="inline-start" />}
+                            />
                             Browse
                           </InputGroupButton>
                         </InputGroupAddon>
@@ -552,8 +565,11 @@ export function DashboardClient({ user }: DashboardClientProps) {
                       </Field>
                     </div>
                     <div className="flex justify-end">
-                      <Button disabled={loading || !profiles.length}>
-                        <CopyIcon data-icon="inline-start" />
+                      <Button disabled={isBusy("create-link") || !profiles.length}>
+                        <BusyIcon
+                          busy={isBusy("create-link")}
+                          idle={<CopyIcon data-icon="inline-start" />}
+                        />
                         Generate and copy
                       </Button>
                     </div>
@@ -611,6 +627,7 @@ export function DashboardClient({ user }: DashboardClientProps) {
                               onTest={testProfile}
                               onDefault={setDefaultProfile}
                               onDelete={deleteProfile}
+                              isBusy={isBusy}
                             />
                           </TableCell>
                         </TableRow>
@@ -646,8 +663,16 @@ export function DashboardClient({ user }: DashboardClientProps) {
                 <CardTitle>History</CardTitle>
                 <CardDescription>{links.length} recent links</CardDescription>
                 <CardAction>
-                  <Button variant="outline" size="sm" onClick={cleanupLinks}>
-                    <Trash2Icon data-icon="inline-start" />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={cleanupLinks}
+                    disabled={isBusy("cleanup-links")}
+                  >
+                    <BusyIcon
+                      busy={isBusy("cleanup-links")}
+                      idle={<Trash2Icon data-icon="inline-start" />}
+                    />
                     Cleanup
                   </Button>
                 </CardAction>
@@ -688,11 +713,17 @@ export function DashboardClient({ user }: DashboardClientProps) {
                                     <Button
                                       variant="outline"
                                       size="icon-xs"
-                                      onClick={() => copyText(link.downloadUrl)}
+                                      onClick={() =>
+                                        copyLink(link.downloadUrl, link.id)
+                                      }
+                                      disabled={isBusy(`copy-link:${link.id}`)}
                                     />
                                   }
                                 >
-                                  <CopyIcon />
+                                  <BusyIcon
+                                    busy={isBusy(`copy-link:${link.id}`)}
+                                    idle={<CopyIcon />}
+                                  />
                                   <span className="sr-only">Copy</span>
                                 </TooltipTrigger>
                                 <TooltipContent>Copy</TooltipContent>
@@ -704,10 +735,14 @@ export function DashboardClient({ user }: DashboardClientProps) {
                                       variant="destructive"
                                       size="icon-xs"
                                       onClick={() => deleteLink(link)}
+                                      disabled={isBusy(`delete-link:${link.id}`)}
                                     />
                                   }
                                 >
-                                  <Trash2Icon />
+                                  <BusyIcon
+                                    busy={isBusy(`delete-link:${link.id}`)}
+                                    idle={<Trash2Icon />}
+                                  />
                                   <span className="sr-only">Delete</span>
                                 </TooltipTrigger>
                                 <TooltipContent>Delete</TooltipContent>
@@ -869,8 +904,11 @@ export function DashboardClient({ user }: DashboardClientProps) {
               >
                 Cancel
               </Button>
-              <Button disabled={loading}>
-                <CheckCircleIcon data-icon="inline-start" />
+              <Button disabled={isBusy("save-profile")}>
+                <BusyIcon
+                  busy={isBusy("save-profile")}
+                  idle={<CheckCircleIcon data-icon="inline-start" />}
+                />
                 Save
               </Button>
             </DialogFooter>
@@ -899,7 +937,14 @@ export function DashboardClient({ user }: DashboardClientProps) {
                 placeholder="prefix/"
               />
               <InputGroupAddon align="inline-end">
-                <InputGroupButton onClick={() => loadObjects(false, prefix, null)}>
+                <InputGroupButton
+                  onClick={() => loadObjects(false, prefix, null)}
+                  disabled={isBusy("objects-search")}
+                >
+                  <BusyIcon
+                    busy={isBusy("objects-search")}
+                    idle={<SearchIcon data-icon="inline-start" />}
+                  />
                   Search
                 </InputGroupButton>
               </InputGroupAddon>
@@ -950,9 +995,12 @@ export function DashboardClient({ user }: DashboardClientProps) {
             <Button
               type="button"
               variant="outline"
-              disabled={!nextContinuationToken}
+              disabled={!nextContinuationToken || isBusy("objects-next")}
               onClick={() => loadObjects(true)}
             >
+              {isBusy("objects-next") && (
+                <Loader2Icon data-icon="inline-start" className="animate-spin" />
+              )}
               Next page
             </Button>
             <Button type="button" onClick={() => setObjectDialogOpen(false)}>
@@ -978,19 +1026,32 @@ function ProfileActions({
   onTest,
   onDefault,
   onDelete,
+  isBusy,
 }: {
   profile: PublicOssProfile;
   onEdit: (profile: PublicOssProfile) => void;
   onTest: (profile: PublicOssProfile) => void;
   onDefault: (profile: PublicOssProfile) => void;
   onDelete: (profile: PublicOssProfile) => void;
+  isBusy: (key: string) => boolean;
 }) {
+  const testing = isBusy(`test-profile:${profile.id}`);
+  const settingDefault = isBusy(`default-profile:${profile.id}`);
+  const deleting = isBusy(`delete-profile:${profile.id}`);
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <Button variant="ghost" size="icon-sm">
-            <MoreHorizontalIcon />
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            disabled={testing || settingDefault || deleting}
+          >
+            <BusyIcon
+              busy={testing || settingDefault || deleting}
+              idle={<MoreHorizontalIcon />}
+            />
             <span className="sr-only">Open actions</span>
           </Button>
         }
@@ -998,22 +1059,39 @@ function ProfileActions({
       <DropdownMenuContent align="end">
         <DropdownMenuGroup>
           <DropdownMenuItem onClick={() => onEdit(profile)}>Edit</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => onTest(profile)}>Test</DropdownMenuItem>
+          <DropdownMenuItem disabled={testing} onClick={() => onTest(profile)}>
+            {testing && <Loader2Icon className="animate-spin" />}
+            Test
+          </DropdownMenuItem>
           {!profile.isDefault && (
-            <DropdownMenuItem onClick={() => onDefault(profile)}>
+            <DropdownMenuItem
+              disabled={settingDefault}
+              onClick={() => onDefault(profile)}
+            >
+              {settingDefault && <Loader2Icon className="animate-spin" />}
               Set default
             </DropdownMenuItem>
           )}
           <DropdownMenuItem
             variant="destructive"
+            disabled={deleting}
             onClick={() => onDelete(profile)}
           >
+            {deleting && <Loader2Icon className="animate-spin" />}
             Disable
           </DropdownMenuItem>
         </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );
+}
+
+function BusyIcon({ busy, idle }: { busy: boolean; idle: ReactNode }) {
+  if (busy) {
+    return <Loader2Icon data-icon="inline-start" className="animate-spin" />;
+  }
+
+  return idle;
 }
 
 function LinkStatus({ link }: { link: LinkResponse }) {

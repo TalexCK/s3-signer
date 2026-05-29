@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { signIn } from "next-auth/react";
-import { LogInIcon, MoonIcon, SunIcon } from "lucide-react";
+import { Loader2Icon, LogInIcon, MoonIcon, SunIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,6 +21,7 @@ import {
 
 export function LoginPanel() {
   const { resolvedTheme, setTheme } = useTheme();
+  const [signingIn, setSigningIn] = useState(false);
   const isDark = resolvedTheme === "dark";
 
   return (
@@ -51,8 +53,19 @@ export function LoginPanel() {
             Sign in with PocketID to manage your own S3-compatible OSS profiles
             and download links.
           </p>
-          <Button onClick={() => signIn("pocketid")} className="w-full">
-            <LogInIcon data-icon="inline-start" />
+          <Button
+            onClick={() => {
+              setSigningIn(true);
+              void signIn("pocketid");
+            }}
+            disabled={signingIn}
+            className="w-full"
+          >
+            {signingIn ? (
+              <Loader2Icon data-icon="inline-start" className="animate-spin" />
+            ) : (
+              <LogInIcon data-icon="inline-start" />
+            )}
             Sign in
           </Button>
         </CardContent>
