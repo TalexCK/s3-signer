@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createLinkSchema, createProfileSchema } from "@/lib/validators";
+import {
+  createLinkSchema,
+  createProfileSchema,
+  listObjectsSchema,
+} from "@/lib/validators";
 
 describe("validators", () => {
   it("accepts S3-compatible OSS profile input", () => {
@@ -39,5 +43,14 @@ describe("validators", () => {
         validForSeconds: 59,
       })
     ).toThrow();
+  });
+
+  it("accepts object keyword search input", () => {
+    expect(
+      listObjectsSchema.parse({
+        profileId: "00000000-0000-4000-8000-000000000000",
+        query: "invoice",
+      }).query
+    ).toBe("invoice");
   });
 });

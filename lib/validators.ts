@@ -38,6 +38,6 @@ export const createLinkSchema = z.object({
 
 export const listObjectsSchema = z.object({
   profileId: z.string().uuid(),
-  prefix: z.string().max(1024).optional().default(""),
+  query: z.string().trim().max(1024).optional().default(""),
   continuationToken: z.string().max(4096).optional(),
 });

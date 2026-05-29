@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const params = listObjectsSchema.parse({
       profileId: url.searchParams.get("profileId"),
-      prefix: url.searchParams.get("prefix") ?? "",
+      query: url.searchParams.get("query") ?? "",
       continuationToken: url.searchParams.get("continuationToken") ?? undefined,
     });
 

@@ -149,7 +149,7 @@ export function DashboardClient({ user }: DashboardClientProps) {
   const [profileForm, setProfileForm] =
     useState<ProfileFormState>(defaultProfileForm);
   const [objects, setObjects] = useState<ObjectInfo[]>([]);
-  const [prefix, setPrefix] = useState("");
+  const [objectSearch, setObjectSearch] = useState("");
   const [continuationToken, setContinuationToken] = useState<string | null>(null);
   const [nextContinuationToken, setNextContinuationToken] = useState<
     string | undefined
@@ -264,7 +264,7 @@ export function DashboardClient({ user }: DashboardClientProps) {
 
   async function loadObjects(
     next = false,
-    prefixOverride?: string,
+    queryOverride?: string,
     continuationOverride?: string | null
   ) {
     if (!selectedProfileId) {
@@ -272,10 +272,10 @@ export function DashboardClient({ user }: DashboardClientProps) {
     }
 
     await runBusy(next ? "objects-next" : "objects-search", async () => {
-      const requestPrefix = prefixOverride ?? prefix;
+      const requestQuery = queryOverride ?? objectSearch;
       const params = new URLSearchParams({
         profileId: selectedProfileId,
-        prefix: requestPrefix,
+        query: requestQuery,
       });
       if (next && nextContinuationToken) {
         params.set("continuationToken", nextContinuationToken);
@@ -374,13 +374,13 @@ export function DashboardClient({ user }: DashboardClientProps) {
   }
 
   function openObjectBrowser() {
-    const initialPrefix = objectKey;
+    const initialQuery = objectKey;
     setObjects([]);
-    setPrefix(initialPrefix);
+    setObjectSearch(initialQuery);
     setContinuationToken(null);
     setNextContinuationToken(undefined);
     setObjectDialogOpen(true);
-    void loadObjects(false, initialPrefix, null);
+    void loadObjects(false, initialQuery, null);
   }
 
   const isDark = resolvedTheme === "dark";
@@ -944,13 +944,19 @@ export function DashboardClient({ user }: DashboardClientProps) {
                 <SearchIcon />
               </InputGroupAddon>
               <InputGroupInput
-                value={prefix}
-                onChange={(event) => setPrefix(event.target.value)}
-                placeholder="prefix/"
+                value={objectSearch}
+                onChange={(event) => setObjectSearch(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    void loadObjects(false, objectSearch, null);
+                  }
+                }}
+                placeholder="Search by object key"
               />
               <InputGroupAddon align="inline-end">
                 <InputGroupButton
-                  onClick={() => loadObjects(false, prefix, null)}
+                  onClick={() => loadObjects(false, objectSearch, null)}
                   disabled={isBusy("objects-search")}
                 >
                   <BusyIcon

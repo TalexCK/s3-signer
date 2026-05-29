@@ -48,28 +48,52 @@ export async function testProfile(profile: OssProfile) {
 
 export async function listObjects(
   profile: OssProfile,
-  options: { prefix?: string; continuationToken?: string }
+  options: { query?: string; continuationToken?: string }
 ) {
   const client = createClient(profile);
-  const result = await client.send(
-    new ListObjectsV2Command({
-      Bucket: profile.bucket,
-      Prefix: options.prefix || undefined,
-      ContinuationToken: options.continuationToken,
-      MaxKeys: 100,
-    })
-  );
+  const query = options.query?.trim().toLowerCase() ?? "";
+  const maxMatches = 100;
+  const maxPages = query ? 20 : 1;
+  let continuationToken = options.continuationToken;
+  const objects: ObjectInfo[] = [];
+  let isTruncated = false;
+  let nextContinuationToken: string | undefined;
 
-  return {
-    objects:
+  for (let page = 0; page < maxPages && objects.length < maxMatches; page += 1) {
+    const result = await client.send(
+      new ListObjectsV2Command({
+        Bucket: profile.bucket,
+        ContinuationToken: continuationToken,
+        MaxKeys: 100,
+      })
+    );
+
+    const pageObjects =
       result.Contents?.map<ObjectInfo>((object) => ({
         key: object.Key ?? "",
         lastModified: object.LastModified?.toISOString() ?? null,
         size: object.Size ?? 0,
         storageClass: object.StorageClass ?? null,
-      })).filter((object) => object.key.length > 0) ?? [],
-    isTruncated: result.IsTruncated ?? false,
-    nextContinuationToken: result.NextContinuationToken,
+      })).filter(
+        (object) =>
+          object.key.length > 0 && (!query || object.key.toLowerCase().includes(query))
+      ) ?? [];
+
+    objects.push(...pageObjects.slice(0, maxMatches - objects.length));
+    isTruncated = result.IsTruncated ?? false;
+    nextContinuationToken = result.NextContinuationToken;
+
+    if (!isTruncated) {
+      break;
+    }
+
+    continuationToken = nextContinuationToken;
+  }
+
+  return {
+    objects,
+    isTruncated,
+    nextContinuationToken,
   };
 }
 
