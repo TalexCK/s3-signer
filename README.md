@@ -1,57 +1,78 @@
 # S3 Signer
 
-Next.js service for creating short download links that redirect to fresh
-S3-compatible OSS SigV4 presigned URLs.
+S3 Signer is a small web service for creating short download links backed by
+S3-compatible object storage. Users sign in with PocketID/OIDC, save encrypted
+OSS profiles, browse objects, and create public links that redirect to fresh
+short-lived presigned URLs.
 
 ## Features
 
-- PocketID OIDC login with admin group filtering.
-- Per-user OSS profiles with encrypted `secretAccessKey` and optional session token.
-- S3-compatible object browsing, link creation, link history, soft deletes, and cleanup.
-- Public `GET /download/:id` endpoint that validates the stored link window and generates a new short-lived presigned URL on each request.
+- PocketID/OIDC login with admin group access control.
+- Encrypted storage credentials for S3-compatible services such as Aliyun OSS.
+- Object browser with keyword search.
+- Link creation, link history, soft delete, and cleanup support.
+- Public download endpoint that generates a new presigned URL for each request.
 - Docker deployment with PostgreSQL persistence.
 
-## Environment
+## Quick Start
 
-Copy `.env.example` and fill the secrets.
+Create a `.env` file:
 
-Generate `APP_ENCRYPTION_KEY` with:
+```bash
+cp .env.example .env
+```
+
+Fill the required values:
+
+```env
+AUTH_SECRET=
+OIDC_CLIENT_ID=
+OIDC_CLIENT_SECRET=
+OIDC_ADMIN_GROUPS=admins
+APP_ENCRYPTION_KEY=
+```
+
+Generate secrets with:
 
 ```bash
 openssl rand -base64 32
 ```
 
-Important URLs:
+Use one generated value for `AUTH_SECRET`, and another generated value for
+`APP_ENCRYPTION_KEY`.
 
-- Main service: `{PUBLIC_APP_URL}`
-- Download base: `{PUBLIC_DOWNLOAD_BASE_URL}`
-- OIDC callback: `{PUBLIC_APP_URL}/api/auth/callback/pocketid`
-
-## Development
+Start the service:
 
 ```bash
-pnpm install
-pnpm dev
+docker compose pull
+docker compose up -d
 ```
 
-PostgreSQL schema is created automatically when the app first touches the
-database.
+By default Docker Compose uses the latest published image:
 
-## Verification
-
-```bash
-pnpm lint
-pnpm test
-pnpm build
+```text
+ghcr.io/honahec/s3-signer:latest
 ```
 
-## Docker
+To pin a specific image version, set `IMAGE_TAG` in `.env`:
 
-```bash
-docker compose up --build -d
+```env
+IMAGE_TAG=1.2.3
 ```
 
-Put a reverse proxy in front of the same container for both domains:
+## OIDC
 
-- `gurl.honahec.cc` routes to the whole app.
-- `api.honahec.cc/download/*` routes to `/download/*` on the app.
+Register this callback URL in your OIDC provider:
+
+```text
+https://{PUBLIC_APP_URL}/api/auth/callback/pocketid
+```
+
+## Reverse Proxy
+
+Run one app container and put two domains in front of it:
+
+- `{PUBLIC_APP_URL}` proxies the whole app.
+- `{PUBLIC_DOWNLOAD_BASE_URL}/*` proxies to `/download/*` on the same app.
+
+The app listens on port `3000` inside Docker Compose.

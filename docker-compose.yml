@@ -1,8 +1,6 @@
 services:
   app:
-    image: s3-signer:latest
-    build:
-      context: .
+    image: ghcr.io/honahec/s3-signer:${IMAGE_TAG:-latest}
     depends_on:
       postgres:
         condition: service_healthy
