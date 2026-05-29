@@ -1,0 +1,41 @@
+services:
+  app:
+    build:
+      context: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://gurl:gurl@postgres:5432/gurl
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-https://gurl.honahec.cc}
+      AUTH_URL: ${AUTH_URL:-https://gurl.honahec.cc}
+      OIDC_ISSUER: ${OIDC_ISSUER:-https://auth.honahec.cc}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:?set OIDC_CLIENT_ID}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:?set OIDC_CLIENT_SECRET}
+      OIDC_ADMIN_GROUPS: ${OIDC_ADMIN_GROUPS:?set OIDC_ADMIN_GROUPS}
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?set APP_ENCRYPTION_KEY}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-https://gurl.honahec.cc}
+      PUBLIC_DOWNLOAD_BASE_URL: ${PUBLIC_DOWNLOAD_BASE_URL:-https://api.honahec.cc/download}
+      SIGNED_URL_TTL_SECONDS: ${SIGNED_URL_TTL_SECONDS:-60}
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: gurl
+      POSTGRES_USER: gurl
+      POSTGRES_PASSWORD: gurl
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gurl -d gurl"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
