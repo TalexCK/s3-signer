@@ -144,13 +144,16 @@ export function DashboardClient({ user }: DashboardClientProps) {
   const [downloadFilename, setDownloadFilename] = useState("");
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
   const [objectDialogOpen, setObjectDialogOpen] = useState(false);
-  const [editingProfile, setEditingProfile] =
-    useState<PublicOssProfile | null>(null);
+  const [editingProfile, setEditingProfile] = useState<PublicOssProfile | null>(
+    null,
+  );
   const [profileForm, setProfileForm] =
     useState<ProfileFormState>(defaultProfileForm);
   const [objects, setObjects] = useState<ObjectInfo[]>([]);
   const [objectSearch, setObjectSearch] = useState("");
-  const [continuationToken, setContinuationToken] = useState<string | null>(null);
+  const [continuationToken, setContinuationToken] = useState<string | null>(
+    null,
+  );
   const [nextContinuationToken, setNextContinuationToken] = useState<
     string | undefined
   >();
@@ -158,39 +161,46 @@ export function DashboardClient({ user }: DashboardClientProps) {
 
   const selectedProfile = useMemo(
     () => profiles.find((profile) => profile.id === selectedProfileId) ?? null,
-    [profiles, selectedProfileId]
+    [profiles, selectedProfileId],
   );
 
   const isBusy = useCallback(
     (key: string) => busyActions.has(key),
-    [busyActions]
+    [busyActions],
   );
 
-  const runBusy = useCallback(async (key: string, action: () => Promise<void>) => {
-    setBusyActions((current) => new Set(current).add(key));
-    try {
-      await action();
-    } catch (error) {
-      toast.error(messageOf(error));
-    } finally {
-      setBusyActions((current) => {
-        const next = new Set(current);
-        next.delete(key);
-        return next;
-      });
-    }
-  }, []);
+  const runBusy = useCallback(
+    async (key: string, action: () => Promise<void>) => {
+      setBusyActions((current) => new Set(current).add(key));
+      try {
+        await action();
+      } catch (error) {
+        toast.error(messageOf(error));
+      } finally {
+        setBusyActions((current) => {
+          const next = new Set(current);
+          next.delete(key);
+          return next;
+        });
+      }
+    },
+    [],
+  );
 
   const refreshProfiles = useCallback(async () => {
-    const data = await api<{ profiles: PublicOssProfile[] }>("/api/oss-profiles");
+    const data = await api<{ profiles: PublicOssProfile[] }>(
+      "/api/oss-profiles",
+    );
     setProfiles(data.profiles);
     setSelectedProfileId((current) => {
       if (current && data.profiles.some((profile) => profile.id === current)) {
         return current;
       }
-      return data.profiles.find((profile) => profile.isDefault)?.id ??
+      return (
+        data.profiles.find((profile) => profile.isDefault)?.id ??
         data.profiles[0]?.id ??
-        "";
+        ""
+      );
     });
   }, []);
 
@@ -224,14 +234,17 @@ export function DashboardClient({ user }: DashboardClientProps) {
         profileId: selectedProfileId,
         objectKey,
         validForSeconds:
-          validForSeconds === "permanent" ? null : Number(validForSeconds),
+          validForSeconds === "Permanent" ? null : Number(validForSeconds),
         maxDownloads: maxDownloads ? Number(maxDownloads) : null,
         downloadFilename: downloadFilename || null,
       };
-      const data = await api<{ link: LinkResponse; url: string }>("/api/links", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
+      const data = await api<{ link: LinkResponse; url: string }>(
+        "/api/links",
+        {
+          method: "POST",
+          body: JSON.stringify(payload),
+        },
+      );
       setLinks((current) => [data.link, ...current]);
       await copyText(data.url);
       toast.success("Download link copied.");
@@ -259,14 +272,16 @@ export function DashboardClient({ user }: DashboardClientProps) {
       await refreshProfiles();
       setSelectedProfileId(data.profile.id);
       setProfileDialogOpen(false);
-      toast.success(editingProfile ? "OSS profile updated." : "OSS profile saved.");
+      toast.success(
+        editingProfile ? "OSS profile updated." : "OSS profile saved.",
+      );
     });
   }
 
   async function loadObjects(
     next = false,
     queryOverride?: string,
-    continuationOverride?: string | null
+    continuationOverride?: string | null,
   ) {
     if (!selectedProfileId) {
       return;
@@ -293,7 +308,7 @@ export function DashboardClient({ user }: DashboardClientProps) {
         nextContinuationToken?: string;
       }>(`/api/objects?${params.toString()}`);
       setObjects(data.objects);
-      setContinuationToken(next ? nextContinuationToken ?? null : null);
+      setContinuationToken(next ? (nextContinuationToken ?? null) : null);
       setNextContinuationToken(data.nextContinuationToken);
     });
   }
@@ -492,7 +507,9 @@ export function DashboardClient({ user }: DashboardClientProps) {
                       <FieldLabel>OSS profile</FieldLabel>
                       <Select
                         value={selectedProfileId}
-                        onValueChange={(value) => setSelectedProfileId(value ?? "")}
+                        onValueChange={(value) =>
+                          setSelectedProfileId(value ?? "")
+                        }
                       >
                         <SelectTrigger className="w-full">
                           <SelectValue placeholder="Select profile" />
@@ -520,7 +537,9 @@ export function DashboardClient({ user }: DashboardClientProps) {
                         <InputGroupAddon align="inline-end">
                           <InputGroupButton
                             onClick={openObjectBrowser}
-                            disabled={!selectedProfileId || isBusy("objects-search")}
+                            disabled={
+                              !selectedProfileId || isBusy("objects-search")
+                            }
                           >
                             <BusyIcon
                               busy={isBusy("objects-search")}
@@ -549,7 +568,9 @@ export function DashboardClient({ user }: DashboardClientProps) {
                               <SelectItem value="86400">1 day</SelectItem>
                               <SelectItem value="604800">7 days</SelectItem>
                               <SelectItem value="2592000">30 days</SelectItem>
-                              <SelectItem value="permanent">Permanent</SelectItem>
+                              <SelectItem value="Permanent">
+                                Permanent
+                              </SelectItem>
                             </SelectGroup>
                           </SelectContent>
                         </Select>
@@ -558,7 +579,9 @@ export function DashboardClient({ user }: DashboardClientProps) {
                         <FieldLabel>Max downloads</FieldLabel>
                         <Input
                           value={maxDownloads}
-                          onChange={(event) => setMaxDownloads(event.target.value)}
+                          onChange={(event) =>
+                            setMaxDownloads(event.target.value)
+                          }
                           inputMode="numeric"
                           placeholder="Unlimited"
                         />
@@ -596,7 +619,9 @@ export function DashboardClient({ user }: DashboardClientProps) {
             <Card>
               <CardHeader>
                 <CardTitle>OSS Profiles</CardTitle>
-                <CardDescription>{profiles.length} active profiles</CardDescription>
+                <CardDescription>
+                  {profiles.length} active profiles
+                </CardDescription>
                 <CardAction>
                   <Button type="button" onClick={openNewProfile}>
                     <PlusIcon data-icon="inline-start" />
@@ -749,7 +774,9 @@ export function DashboardClient({ user }: DashboardClientProps) {
                                       variant="destructive"
                                       size="icon-xs"
                                       onClick={() => deleteLink(link)}
-                                      disabled={isBusy(`delete-link:${link.id}`)}
+                                      disabled={isBusy(
+                                        `delete-link:${link.id}`,
+                                      )}
                                     />
                                   }
                                 >
@@ -1020,7 +1047,10 @@ export function DashboardClient({ user }: DashboardClientProps) {
               onClick={() => loadObjects(true)}
             >
               {isBusy("objects-next") && (
-                <Loader2Icon data-icon="inline-start" className="animate-spin" />
+                <Loader2Icon
+                  data-icon="inline-start"
+                  className="animate-spin"
+                />
               )}
               Next page
             </Button>
@@ -1035,7 +1065,7 @@ export function DashboardClient({ user }: DashboardClientProps) {
 
   function setProfileFormField<T extends keyof ProfileFormState>(
     key: T,
-    value: ProfileFormState[T]
+    value: ProfileFormState[T],
   ) {
     setProfileForm((current) => ({ ...current, [key]: value }));
   }
@@ -1080,7 +1110,9 @@ function ProfileActions({
       />
       <DropdownMenuContent align="end">
         <DropdownMenuGroup>
-          <DropdownMenuItem onClick={() => onEdit(profile)}>Edit</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onEdit(profile)}>
+            Edit
+          </DropdownMenuItem>
           <DropdownMenuItem disabled={testing} onClick={() => onTest(profile)}>
             {testing && <Loader2Icon className="animate-spin" />}
             Test
