@@ -43,7 +43,10 @@ export async function GET(_request: Request, context: RouteContext) {
         throw new HttpError(410, "OSS profile is disabled");
       }
 
-      if (new Date(row.valid_until).getTime() <= Date.now()) {
+      if (
+        row.valid_until !== null &&
+        new Date(row.valid_until).getTime() <= Date.now()
+      ) {
         throw new HttpError(410, "Download link has expired");
       }
 

@@ -223,7 +223,8 @@ export function DashboardClient({ user }: DashboardClientProps) {
       const payload = {
         profileId: selectedProfileId,
         objectKey,
-        validForSeconds: Number(validForSeconds),
+        validForSeconds:
+          validForSeconds === "permanent" ? null : Number(validForSeconds),
         maxDownloads: maxDownloads ? Number(maxDownloads) : null,
         downloadFilename: downloadFilename || null,
       };
@@ -548,6 +549,7 @@ export function DashboardClient({ user }: DashboardClientProps) {
                               <SelectItem value="86400">1 day</SelectItem>
                               <SelectItem value="604800">7 days</SelectItem>
                               <SelectItem value="2592000">30 days</SelectItem>
+                              <SelectItem value="permanent">Permanent</SelectItem>
                             </SelectGroup>
                           </SelectContent>
                         </Select>
@@ -1155,7 +1157,11 @@ function messageOf(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong";
 }
 
-function formatDate(value: string) {
+function formatDate(value: string | null) {
+  if (value === null) {
+    return "Permanent";
+  }
+
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
     timeStyle: "short",

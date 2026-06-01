@@ -52,4 +52,29 @@ describe("serializers", () => {
       "https://api.example.test/download/00000000-0000-4000-8000-000000000000"
     );
   });
+
+  it("keeps permanent links active until their download limit is reached", () => {
+    const link: DownloadLink = {
+      id: "00000000-0000-4000-8000-000000000000",
+      ownerSub: "user-a",
+      ossProfileId: "profile-id",
+      profileSnapshot: {
+        name: "Aliyun",
+        endpoint: "https://s3.oss-cn-hangzhou.aliyuncs.com",
+        region: "oss-cn-hangzhou",
+        bucket: "bucket",
+        forcePathStyle: false,
+      },
+      objectKey: "file.zip",
+      validUntil: null,
+      maxDownloads: 2,
+      downloadsServed: 1,
+      downloadFilename: null,
+      createdAt: "2026-05-29T00:00:00.000Z",
+      deletedAt: null,
+    };
+
+    expect(publicLink(link).isExpired).toBe(false);
+    expect(publicLink({ ...link, downloadsServed: 2 }).isExpired).toBe(true);
+  });
 });

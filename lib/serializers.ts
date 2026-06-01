@@ -26,9 +26,9 @@ export function publicLink(
   link: DownloadLink,
   profileDisabledAt?: string | null
 ): LinkResponse {
-  const validUntil = new Date(link.validUntil);
   const isExpired =
-    validUntil.getTime() <= Date.now() ||
+    (link.validUntil !== null &&
+      new Date(link.validUntil).getTime() <= Date.now()) ||
     (!!link.maxDownloads && link.downloadsServed >= link.maxDownloads);
 
   return {

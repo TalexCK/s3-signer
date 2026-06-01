@@ -47,7 +47,10 @@ export async function POST(request: Request) {
       }
 
       const profile = mapProfile(profileResult.rows[0]);
-      const validUntil = new Date(Date.now() + payload.validForSeconds * 1000);
+      const validUntil =
+        payload.validForSeconds === null
+          ? null
+          : new Date(Date.now() + payload.validForSeconds * 1000);
       const result = await client.query(
         `INSERT INTO download_links (
           id, owner_sub, oss_profile_id, profile_snapshot, object_key,

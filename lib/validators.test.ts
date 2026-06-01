@@ -45,6 +45,16 @@ describe("validators", () => {
     ).toThrow();
   });
 
+  it("accepts permanent link validity", () => {
+    expect(
+      createLinkSchema.parse({
+        profileId: "00000000-0000-4000-8000-000000000000",
+        objectKey: "file.zip",
+        validForSeconds: null,
+      }).validForSeconds
+    ).toBeNull();
+  });
+
   it("accepts object keyword search input", () => {
     expect(
       listObjectsSchema.parse({

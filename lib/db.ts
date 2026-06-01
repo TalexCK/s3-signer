@@ -89,7 +89,7 @@ async function migrate() {
       oss_profile_id uuid NOT NULL REFERENCES oss_profiles(id),
       profile_snapshot jsonb NOT NULL,
       object_key text NOT NULL,
-      valid_until timestamptz NOT NULL,
+      valid_until timestamptz,
       max_downloads integer,
       downloads_served integer NOT NULL DEFAULT 0,
       download_filename text,
@@ -108,6 +108,9 @@ async function migrate() {
   );
   await db.query(
     "CREATE INDEX IF NOT EXISTS idx_download_links_valid_until ON download_links(valid_until)"
+  );
+  await db.query(
+    "ALTER TABLE download_links ALTER COLUMN valid_until DROP NOT NULL"
   );
   await db.query(
     "CREATE INDEX IF NOT EXISTS idx_download_links_profile ON download_links(oss_profile_id)"
@@ -140,7 +143,7 @@ export function mapLink(row: QueryResultRow): DownloadLink {
     ossProfileId: row.oss_profile_id,
     profileSnapshot: row.profile_snapshot as ProfileSnapshot,
     objectKey: row.object_key,
-    validUntil: row.valid_until?.toISOString?.() ?? row.valid_until,
+    validUntil: row.valid_until?.toISOString?.() ?? row.valid_until ?? null,
     maxDownloads: row.max_downloads,
     downloadsServed: row.downloads_served,
     downloadFilename: row.download_filename,
