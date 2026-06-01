@@ -5,7 +5,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgres://s3_signer:s3_signer@postgres:5432/s3_signer
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-https://gurl.honahec.cc}
       AUTH_URL: ${AUTH_URL:-https://gurl.honahec.cc}
@@ -18,21 +18,21 @@ services:
       PUBLIC_DOWNLOAD_BASE_URL: ${PUBLIC_DOWNLOAD_BASE_URL:-https://api.honahec.cc/download}
       SIGNED_URL_TTL_SECONDS: ${SIGNED_URL_TTL_SECONDS:-60}
     ports:
-      - "3000:3000"
+      - "${PORT:-3000}:3000"
     restart: unless-stopped
 
   postgres:
     image: postgres:17-alpine
+    entrypoint: ["/bin/sh", "/usr/local/bin/s3-signer-postgres-entrypoint.sh"]
     environment:
-      POSTGRES_DB: s3_signer
-      POSTGRES_USER: s3_signer
-      POSTGRES_PASSWORD: s3_signer
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U s3_signer -d s3_signer"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432"]
       interval: 10s
       timeout: 5s
       retries: 5
     volumes:
+      - ./docker/postgres-entrypoint.sh:/usr/local/bin/s3-signer-postgres-entrypoint.sh:ro
       - postgres-data:/var/lib/postgresql/data
     restart: unless-stopped
 

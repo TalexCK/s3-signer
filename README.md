@@ -5,6 +5,16 @@ S3-compatible object storage. Users sign in with PocketID/OIDC, save encrypted
 OSS profiles, browse objects, and create public links that redirect to fresh
 short-lived presigned URLs.
 
+## BREAK UPDATE: v2.0.0
+
+Since `docker-compose.yml` now read `DATABASE_URL` from environment, if you want to update, please according to:
+
+```bash
+docker compose exec postgres psql -U s3_signer -d s3_signer -c "ALTER USER s3_signer WITH PASSWORD 'your-new-password';"
+docker compose pull app
+docker compose up -d app
+```
+
 ## Features
 
 - PocketID/OIDC login with admin group access control.
@@ -30,6 +40,13 @@ OIDC_CLIENT_ID=
 OIDC_CLIENT_SECRET=
 OIDC_ADMIN_GROUPS=admins
 APP_ENCRYPTION_KEY=
+```
+
+For Docker Compose, the bundled PostgreSQL service defaults to:
+
+```env
+PORT=3000
+DATABASE_URL=postgres://s3_signer:s3_signer@postgres:5432/s3_signer
 ```
 
 Generate secrets with:
@@ -58,6 +75,15 @@ To pin a specific image version, set `IMAGE_TAG` in `.env`:
 
 ```env
 IMAGE_TAG=1.2.3
+```
+
+## Upgrading
+
+For a normal image update:
+
+```bash
+docker compose pull app
+docker compose up -d app
 ```
 
 ## OIDC
