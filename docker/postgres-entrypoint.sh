@@ -1,7 +1,7 @@
 set -eu
 
 url_decode() {
-  escaped=$(printf '%s' "$1" | sed 's/+/ /g; s/%/\\x/g')
+  escaped=$(printf '%s' "$1" | sed 's/%/\\x/g')
   printf '%b' "$escaped"
 }
 
