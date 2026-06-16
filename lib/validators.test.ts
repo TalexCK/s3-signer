@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  createFolderSchema,
   createLinkSchema,
   createProfileSchema,
   listObjectsSchema,
@@ -62,5 +63,15 @@ describe("validators", () => {
         query: "invoice",
       }).query
     ).toBe("invoice");
+  });
+
+  it("accepts folder creation input", () => {
+    expect(
+      createFolderSchema.parse({
+        profileId: "00000000-0000-4000-8000-000000000000",
+        prefix: "reports/",
+        name: "2026",
+      }).name
+    ).toBe("2026");
   });
 });

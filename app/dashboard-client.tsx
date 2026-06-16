@@ -15,9 +15,8 @@ import {
   CheckCircleIcon,
   CopyIcon,
   FileIcon,
-  FilesIcon,
+  FolderPlusIcon,
   FolderOpenIcon,
-  FolderUpIcon,
   KeyRoundIcon,
   Loader2Icon,
   LogOutIcon,
@@ -149,6 +148,8 @@ export function DashboardClient({ user }: DashboardClientProps) {
   const [downloadFilename, setDownloadFilename] = useState("");
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
+  const [createFolderDialogOpen, setCreateFolderDialogOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
   const [settingsForm, setSettingsForm] = useState<SettingsFormState>({
     adminGroups: "",
     userGroups: "",
@@ -168,9 +169,7 @@ export function DashboardClient({ user }: DashboardClientProps) {
     string | undefined
   >();
   const [busyActions, setBusyActions] = useState<Set<string>>(() => new Set());
-  const singleFileInputRef = useRef<HTMLInputElement>(null);
-  const multiFileInputRef = useRef<HTMLInputElement>(null);
-  const folderInputRef = useRef<HTMLInputElement>(null);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
 
   const selectedProfile = useMemo(
     () => profiles.find((profile) => profile.id === selectedProfileId) ?? null,
@@ -397,6 +396,9 @@ export function DashboardClient({ user }: DashboardClientProps) {
           file.name;
         return { file, relativePath };
       });
+      const hasFolderPaths = selectedFiles.some(({ relativePath }) =>
+        relativePath.includes("/"),
+      );
 
       const data = await api<{
         uploads: Array<{
@@ -436,7 +438,35 @@ export function DashboardClient({ user }: DashboardClientProps) {
         }),
       );
 
-      toast.success(`${data.uploads.length} object(s) uploaded.`);
+      const uploadKind = hasFolderPaths
+        ? "Folder"
+        : data.uploads.length === 1
+          ? "File"
+          : "Files";
+      toast.success(`${uploadKind} uploaded. ${data.uploads.length} object(s) saved.`);
+      await loadObjects(false, objectSearch, null, browsePrefix);
+    });
+  }
+
+  async function createFolder(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedProfileId) {
+      toast.error("Select an OSS profile first.");
+      return;
+    }
+
+    await runBusy("create-folder", async () => {
+      const data = await api<{ objectKey: string }>("/api/objects", {
+        method: "PUT",
+        body: JSON.stringify({
+          profileId: selectedProfileId,
+          prefix: browsePrefix,
+          name: newFolderName,
+        }),
+      });
+      setCreateFolderDialogOpen(false);
+      setNewFolderName("");
+      toast.success(`Folder created: ${data.objectKey}`);
       await loadObjects(false, objectSearch, null, browsePrefix);
     });
   }
@@ -650,7 +680,7 @@ export function DashboardClient({ user }: DashboardClientProps) {
                       variant="outline"
                       size="sm"
                       disabled={!selectedProfileId || isBusy("objects-upload")}
-                      onClick={() => singleFileInputRef.current?.click()}
+                      onClick={() => uploadInputRef.current?.click()}
                     >
                       <BusyIcon
                         busy={isBusy("objects-upload")}
@@ -662,51 +692,21 @@ export function DashboardClient({ user }: DashboardClientProps) {
                       type="button"
                       variant="outline"
                       size="sm"
-                      disabled={!selectedProfileId || isBusy("objects-upload")}
-                      onClick={() => multiFileInputRef.current?.click()}
+                      disabled={!selectedProfileId || isBusy("create-folder")}
+                      onClick={() => setCreateFolderDialogOpen(true)}
                     >
-                      <FilesIcon data-icon="inline-start" />
-                      Files
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={!selectedProfileId || isBusy("objects-upload")}
-                      onClick={() => folderInputRef.current?.click()}
-                    >
-                      <FolderUpIcon data-icon="inline-start" />
-                      Folder
+                      <BusyIcon
+                        busy={isBusy("create-folder")}
+                        idle={<FolderPlusIcon data-icon="inline-start" />}
+                      />
+                      New folder
                     </Button>
                   </div>
                 </CardAction>
               </CardHeader>
               <CardContent>
                 <input
-                  ref={singleFileInputRef}
-                  type="file"
-                  className="hidden"
-                  onChange={(event) => {
-                    void uploadSelectedFiles(event.currentTarget.files);
-                    event.currentTarget.value = "";
-                  }}
-                />
-                <input
-                  ref={multiFileInputRef}
-                  type="file"
-                  className="hidden"
-                  multiple
-                  onChange={(event) => {
-                    void uploadSelectedFiles(event.currentTarget.files);
-                    event.currentTarget.value = "";
-                  }}
-                />
-                <input
-                  ref={(element) => {
-                    folderInputRef.current = element;
-                    element?.setAttribute("webkitdirectory", "");
-                    element?.setAttribute("directory", "");
-                  }}
+                  ref={uploadInputRef}
                   type="file"
                   className="hidden"
                   multiple
@@ -1226,6 +1226,52 @@ export function DashboardClient({ user }: DashboardClientProps) {
                   idle={<CheckCircleIcon data-icon="inline-start" />}
                 />
                 Save
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={createFolderDialogOpen}
+        onOpenChange={setCreateFolderDialogOpen}
+      >
+        <DialogContent>
+          <form onSubmit={createFolder}>
+            <DialogHeader>
+              <DialogTitle>New Folder</DialogTitle>
+              <DialogDescription>
+                Create a folder under {currentBrowsePrefix(browsePrefix)}.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <Field>
+                <FieldLabel>Folder name</FieldLabel>
+                <Input
+                  value={newFolderName}
+                  onChange={(event) => setNewFolderName(event.target.value)}
+                  placeholder="documents"
+                  autoFocus
+                />
+              </Field>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCreateFolderDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isBusy("create-folder") || !newFolderName.trim()}
+              >
+                <BusyIcon
+                  busy={isBusy("create-folder")}
+                  idle={<FolderPlusIcon data-icon="inline-start" />}
+                />
+                Create folder
               </Button>
             </DialogFooter>
           </form>

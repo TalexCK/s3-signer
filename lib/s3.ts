@@ -134,6 +134,18 @@ export async function signUploadUrl(
   );
 }
 
+export async function createFolderObject(profile: OssProfile, objectKey: string) {
+  const client = createClient(profile);
+  await client.send(
+    new PutObjectCommand({
+      Bucket: profile.bucket,
+      Key: objectKey,
+      Body: new Uint8Array(0),
+      ContentType: "application/x-directory",
+    })
+  );
+}
+
 export async function deleteObject(profile: OssProfile, objectKey: string) {
   const client = createClient(profile);
   await client.send(

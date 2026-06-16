@@ -2,8 +2,14 @@ import { NextResponse } from "next/server";
 import { HttpError, jsonError } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 import { mapProfile, query, withTransaction } from "@/lib/db";
-import { deleteObject, listObjects, signUploadUrl } from "@/lib/s3";
 import {
+  createFolderObject,
+  deleteObject,
+  listObjects,
+  signUploadUrl,
+} from "@/lib/s3";
+import {
+  createFolderSchema,
   deleteObjectSchema,
   listObjectsSchema,
   uploadObjectsSchema,
@@ -98,6 +104,44 @@ export async function POST(request: Request) {
   }
 }
 
+export async function PUT(request: Request) {
+  try {
+    const user = await requireUser();
+    const payload = createFolderSchema.parse(await request.json());
+
+    const profileResult = await query(
+      "SELECT * FROM oss_profiles WHERE id = $1 AND disabled_at IS NULL",
+      [payload.profileId]
+    );
+    if (profileResult.rowCount === 0) {
+      throw new HttpError(404, "OSS profile not found");
+    }
+
+    const prefix = normalizeUploadPrefix(payload.prefix);
+    const folderName = normalizeFolderName(payload.name);
+    const objectKey = `${prefix}${folderName}/`;
+    if (!folderName || objectKey === "/") {
+      throw new HttpError(400, "Invalid folder name");
+    }
+
+    await createFolderObject(mapProfile(profileResult.rows[0]), objectKey);
+    await query(
+      `INSERT INTO object_uploads (oss_profile_id, object_key, owner_sub)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (oss_profile_id, object_key) DO UPDATE
+       SET owner_sub = EXCLUDED.owner_sub, created_at = now()`,
+      [payload.profileId, objectKey, user.id]
+    );
+
+    return NextResponse.json({ objectKey }, { status: 201 });
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return jsonError(new HttpError(400, "Invalid JSON"));
+    }
+    return jsonError(error);
+  }
+}
+
 export async function DELETE(request: Request) {
   try {
     const user = await requireUser();
@@ -173,6 +217,10 @@ function normalizeUploadPrefix(prefix: string) {
 
 function normalizeFileName(name: string) {
   return name.replace(/^\/+/, "").replaceAll("\\", "/");
+}
+
+function normalizeFolderName(name: string) {
+  return name.replace(/^\/+/, "").replace(/\/+$/, "").replaceAll("\\", "/");
 }
 
 async function filterUserObjects(

@@ -62,6 +62,12 @@ export const uploadObjectsSchema = z.object({
   prefix: z.string().trim().max(2048).optional().default(""),
 });
 
+export const createFolderSchema = z.object({
+  profileId: z.string().uuid(),
+  prefix: z.string().trim().max(2048).optional().default(""),
+  name: z.string().trim().min(1).max(255),
+});
+
 export const deleteObjectSchema = z.object({
   profileId: z.string().uuid(),
   objectKey: z.string().trim().min(1).max(2048),
