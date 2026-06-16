@@ -97,11 +97,42 @@ async function migrate() {
       deleted_at timestamptz
     )
   `);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key text PRIMARY KEY,
+      value text NOT NULL DEFAULT '',
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS object_uploads (
+      oss_profile_id uuid NOT NULL REFERENCES oss_profiles(id),
+      object_key text NOT NULL,
+      owner_sub text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (oss_profile_id, object_key)
+    )
+  `);
   await db.query(
     "CREATE INDEX IF NOT EXISTS idx_oss_profiles_owner ON oss_profiles(owner_sub)"
   );
   await db.query(
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_oss_profiles_default ON oss_profiles(owner_sub) WHERE is_default = true AND disabled_at IS NULL"
+  );
+  await db.query(`
+    UPDATE oss_profiles
+    SET is_default = false, updated_at = now()
+    WHERE is_default = true
+      AND disabled_at IS NULL
+      AND id <> (
+        SELECT id FROM oss_profiles
+        WHERE is_default = true AND disabled_at IS NULL
+        ORDER BY created_at DESC
+        LIMIT 1
+      )
+  `);
+  await db.query(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_oss_profiles_global_default ON oss_profiles(is_default) WHERE is_default = true AND disabled_at IS NULL"
   );
   await db.query(
     "CREATE INDEX IF NOT EXISTS idx_download_links_owner_created ON download_links(owner_sub, created_at DESC)"
@@ -114,6 +145,18 @@ async function migrate() {
   );
   await db.query(
     "CREATE INDEX IF NOT EXISTS idx_download_links_profile ON download_links(oss_profile_id)"
+  );
+  await db.query(
+    "CREATE INDEX IF NOT EXISTS idx_object_uploads_owner_profile ON object_uploads(owner_sub, oss_profile_id, object_key)"
+  );
+  await db.query(
+    `INSERT INTO app_settings (key, value)
+     VALUES ('oidc_admin_groups', $1), ('oidc_user_groups', $2)
+     ON CONFLICT (key) DO NOTHING`,
+    [
+      getAppConfig().oidcAdminGroups.join(","),
+      getAppConfig().oidcUserGroups.join(","),
+    ]
   );
 }
 

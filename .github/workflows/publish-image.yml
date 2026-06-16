@@ -6,7 +6,7 @@ on:
       - "v*.*.*"
 
 env:
-  IMAGE_NAME: ghcr.io/honahec/s3-signer
+  IMAGE_NAME: ghcr.io/TalexCK/s3-signer
 
 jobs:
   publish-image:

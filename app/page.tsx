@@ -16,6 +16,7 @@ export default async function Home() {
         id: session.user.id,
         name: session.user.name ?? session.user.email ?? "User",
         email: session.user.email ?? null,
+        role: session.user.role ?? "user",
       }}
     />
   );

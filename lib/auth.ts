@@ -3,6 +3,7 @@ import "server-only";
 import { getServerSession } from "next-auth";
 import type { NextAuthOptions, Profile, Session } from "next-auth";
 import type { JWT } from "next-auth/jwt";
+import { getAccessSettings, resolveRole, splitGroups } from "@/lib/access";
 import { HttpError } from "@/lib/api";
 import { getAppConfig } from "@/lib/env";
 
@@ -19,17 +20,13 @@ function profileGroups(profile?: PocketIdProfile | null) {
     return groups.filter((group): group is string => typeof group === "string");
   }
   if (typeof groups === "string") {
-    return groups
-      .split(/[,\s]+/)
-      .map((group) => group.trim())
-      .filter(Boolean);
+    return splitGroups(groups);
   }
   return [];
 }
 
-function hasAdminGroup(groups: string[]) {
-  const allowed = new Set(getAppConfig().oidcAdminGroups);
-  return groups.some((group) => allowed.has(group));
+async function roleForGroups(groups: string[]) {
+  return resolveRole(groups, await getAccessSettings());
 }
 
 export const authOptions: NextAuthOptions = {
@@ -69,7 +66,7 @@ export const authOptions: NextAuthOptions = {
   ],
   callbacks: {
     async signIn({ profile }) {
-      return hasAdminGroup(profileGroups(profile as PocketIdProfile));
+      return !!(await roleForGroups(profileGroups(profile as PocketIdProfile)));
     },
     async jwt({ token, profile, user }) {
       const pocketProfile = profile as PocketIdProfile | undefined;
@@ -88,10 +85,12 @@ export const authOptions: NextAuthOptions = {
   },
 };
 
-function attachTokenToSession(session: Session, token: JWT) {
+async function attachTokenToSession(session: Session, token: JWT) {
   if (session.user) {
+    const groups = Array.isArray(token.groups) ? token.groups : [];
     session.user.id = token.sub ?? "";
-    session.user.groups = Array.isArray(token.groups) ? token.groups : [];
+    session.user.groups = groups;
+    session.user.role = (await roleForGroups(groups)) ?? undefined;
   }
 
   return session;
@@ -105,7 +104,8 @@ export async function requireUser() {
     throw new HttpError(401, "Unauthorized");
   }
 
-  if (!hasAdminGroup(session.user.groups ?? [])) {
+  const role = await roleForGroups(session.user.groups ?? []);
+  if (!role) {
     throw new HttpError(403, "Forbidden");
   }
 
@@ -114,5 +114,15 @@ export async function requireUser() {
     name: session.user.name ?? session.user.email ?? "User",
     email: session.user.email ?? null,
     groups: session.user.groups ?? [],
+    role,
   };
+}
+
+export async function requireAdmin() {
+  const user = await requireUser();
+  if (user.role !== "admin") {
+    throw new HttpError(403, "Admin group required");
+  }
+
+  return user;
 }

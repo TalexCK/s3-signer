@@ -73,4 +73,5 @@ export interface ObjectInfo {
   lastModified: string | null;
   size: number;
   storageClass: string | null;
+  kind?: "file" | "folder";
 }

@@ -57,7 +57,8 @@ export function getAppConfig() {
     oidcIssuer: readEnv("OIDC_ISSUER", DEFAULT_ISSUER).replace(/\/$/, ""),
     oidcClientId: readEnv("OIDC_CLIENT_ID"),
     oidcClientSecret: readEnv("OIDC_CLIENT_SECRET"),
-    oidcAdminGroups: parseList(readEnv("OIDC_ADMIN_GROUPS")),
+    oidcAdminGroups: parseList(readEnv("OIDC_ADMIN_GROUPS", "admin")),
+    oidcUserGroups: parseList(readOptionalEnv("OIDC_USER_GROUPS")),
     publicAppUrl: readEnv("PUBLIC_APP_URL", DEFAULT_APP_URL).replace(/\/$/, ""),
     publicDownloadBaseUrl: readEnv(
       "PUBLIC_DOWNLOAD_BASE_URL",

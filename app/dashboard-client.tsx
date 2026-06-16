@@ -6,6 +6,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { signOut } from "next-auth/react";
@@ -14,7 +15,9 @@ import {
   CheckCircleIcon,
   CopyIcon,
   FileIcon,
+  FilesIcon,
   FolderOpenIcon,
+  FolderUpIcon,
   KeyRoundIcon,
   Loader2Icon,
   LogOutIcon,
@@ -25,6 +28,7 @@ import {
   SearchIcon,
   SunIcon,
   Trash2Icon,
+  UploadIcon,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Badge } from "@/components/ui/badge";
@@ -71,12 +75,6 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput,
-} from "@/components/ui/input-group";
-import {
   Select,
   SelectContent,
   SelectGroup,
@@ -106,6 +104,7 @@ interface DashboardClientProps {
     id: string;
     name: string;
     email: string | null;
+    role: "admin" | "user";
   };
 }
 
@@ -119,6 +118,11 @@ interface ProfileFormState {
   sessionToken: string;
   forcePathStyle: boolean;
   isDefault: boolean;
+}
+
+interface SettingsFormState {
+  adminGroups: string;
+  userGroups: string;
 }
 
 const defaultProfileForm: ProfileFormState = {
@@ -137,13 +141,18 @@ export function DashboardClient({ user }: DashboardClientProps) {
   const { resolvedTheme, setTheme } = useTheme();
   const [profiles, setProfiles] = useState<PublicOssProfile[]>([]);
   const [links, setLinks] = useState<LinkResponse[]>([]);
+  const [activeTab, setActiveTab] = useState("browse");
   const [selectedProfileId, setSelectedProfileId] = useState("");
-  const [objectKey, setObjectKey] = useState("");
+  const [generatingObjectKey, setGeneratingObjectKey] = useState("");
   const [validForSeconds, setValidForSeconds] = useState("86400");
   const [maxDownloads, setMaxDownloads] = useState("");
   const [downloadFilename, setDownloadFilename] = useState("");
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
-  const [objectDialogOpen, setObjectDialogOpen] = useState(false);
+  const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
+  const [settingsForm, setSettingsForm] = useState<SettingsFormState>({
+    adminGroups: "",
+    userGroups: "",
+  });
   const [editingProfile, setEditingProfile] = useState<PublicOssProfile | null>(
     null,
   );
@@ -151,6 +160,7 @@ export function DashboardClient({ user }: DashboardClientProps) {
     useState<ProfileFormState>(defaultProfileForm);
   const [objects, setObjects] = useState<ObjectInfo[]>([]);
   const [objectSearch, setObjectSearch] = useState("");
+  const [browsePrefix, setBrowsePrefix] = useState("");
   const [continuationToken, setContinuationToken] = useState<string | null>(
     null,
   );
@@ -158,11 +168,15 @@ export function DashboardClient({ user }: DashboardClientProps) {
     string | undefined
   >();
   const [busyActions, setBusyActions] = useState<Set<string>>(() => new Set());
+  const singleFileInputRef = useRef<HTMLInputElement>(null);
+  const multiFileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   const selectedProfile = useMemo(
     () => profiles.find((profile) => profile.id === selectedProfileId) ?? null,
     [profiles, selectedProfileId],
   );
+  const isAdmin = user.role === "admin";
 
   const isBusy = useCallback(
     (key: string) => busyActions.has(key),
@@ -209,11 +223,29 @@ export function DashboardClient({ user }: DashboardClientProps) {
     setLinks(data.links);
   }, []);
 
+  const refreshSettings = useCallback(async () => {
+    if (!isAdmin) {
+      return;
+    }
+
+    const data = await api<{
+      settings: { adminGroups: string[]; userGroups: string[] };
+    }>("/api/settings");
+    setSettingsForm({
+      adminGroups: data.settings.adminGroups.join(", "),
+      userGroups: data.settings.userGroups.join(", "),
+    });
+  }, [isAdmin]);
+
   const refreshAll = useCallback(async () => {
     await runBusy("refresh", async () => {
-      await Promise.all([refreshProfiles(), refreshLinks()]);
+      await Promise.all([
+        refreshProfiles(),
+        refreshLinks(),
+        isAdmin ? refreshSettings() : Promise.resolve(),
+      ]);
     });
-  }, [refreshLinks, refreshProfiles, runBusy]);
+  }, [isAdmin, refreshLinks, refreshProfiles, refreshSettings, runBusy]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -228,11 +260,15 @@ export function DashboardClient({ user }: DashboardClientProps) {
       toast.error("Create an OSS profile first.");
       return;
     }
+    if (!generatingObjectKey) {
+      toast.error("Select an object first.");
+      return;
+    }
 
     await runBusy("create-link", async () => {
       const payload = {
         profileId: selectedProfileId,
-        objectKey,
+        objectKey: generatingObjectKey,
         validForSeconds:
           validForSeconds === "Permanent" ? null : Number(validForSeconds),
         maxDownloads: maxDownloads ? Number(maxDownloads) : null,
@@ -248,7 +284,7 @@ export function DashboardClient({ user }: DashboardClientProps) {
       setLinks((current) => [data.link, ...current]);
       await copyText(data.url);
       toast.success("Download link copied.");
-      setObjectKey("");
+      setGenerateDialogOpen(false);
       setDownloadFilename("");
     });
   }
@@ -278,21 +314,53 @@ export function DashboardClient({ user }: DashboardClientProps) {
     });
   }
 
+  async function saveSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!isAdmin) {
+      toast.error("Admin group required.");
+      return;
+    }
+
+    await runBusy("save-settings", async () => {
+      const data = await api<{
+        settings: { adminGroups: string[]; userGroups: string[] };
+      }>("/api/settings", {
+        method: "PUT",
+        body: JSON.stringify({
+          adminGroups: parseGroupInput(settingsForm.adminGroups),
+          userGroups: parseGroupInput(settingsForm.userGroups),
+        }),
+      });
+      setSettingsForm({
+        adminGroups: data.settings.adminGroups.join(", "),
+        userGroups: data.settings.userGroups.join(", "),
+      });
+      toast.success("Settings saved.");
+    });
+  }
+
   async function loadObjects(
     next = false,
     queryOverride?: string,
     continuationOverride?: string | null,
+    prefixOverride?: string,
+    profileIdOverride?: string,
   ) {
-    if (!selectedProfileId) {
+    const requestProfileId = profileIdOverride ?? selectedProfileId;
+    if (!requestProfileId) {
       return;
     }
 
     await runBusy(next ? "objects-next" : "objects-search", async () => {
       const requestQuery = queryOverride ?? objectSearch;
       const params = new URLSearchParams({
-        profileId: selectedProfileId,
+        profileId: requestProfileId,
         query: requestQuery,
       });
+      const requestPrefix = prefixOverride ?? browsePrefix;
+      if (requestPrefix) {
+        params.set("prefix", requestPrefix);
+      }
       if (next && nextContinuationToken) {
         params.set("continuationToken", nextContinuationToken);
       } else {
@@ -310,6 +378,95 @@ export function DashboardClient({ user }: DashboardClientProps) {
       setObjects(data.objects);
       setContinuationToken(next ? (nextContinuationToken ?? null) : null);
       setNextContinuationToken(data.nextContinuationToken);
+    });
+  }
+
+  async function uploadSelectedFiles(files: FileList | null) {
+    if (!selectedProfileId) {
+      toast.error("Select an OSS profile first.");
+      return;
+    }
+    if (!files?.length) {
+      return;
+    }
+
+    await runBusy("objects-upload", async () => {
+      const selectedFiles = Array.from(files).map((file) => {
+        const relativePath =
+          (file as File & { webkitRelativePath?: string }).webkitRelativePath ||
+          file.name;
+        return { file, relativePath };
+      });
+
+      const data = await api<{
+        uploads: Array<{
+          objectKey: string;
+          url: string;
+          contentType: string | null;
+        }>;
+      }>("/api/objects", {
+        method: "POST",
+        body: JSON.stringify({
+          profileId: selectedProfileId,
+          prefix: browsePrefix,
+          files: selectedFiles.map(({ file, relativePath }) => ({
+            name: relativePath,
+            contentType: file.type || null,
+          })),
+        }),
+      });
+
+      await Promise.all(
+        data.uploads.map(async (upload, index) => {
+          const file = selectedFiles[index]?.file;
+          if (!file) {
+            throw new Error("Upload file list changed unexpectedly");
+          }
+
+          const response = await fetch(upload.url, {
+            method: "PUT",
+            headers: upload.contentType
+              ? { "content-type": upload.contentType }
+              : undefined,
+            body: file,
+          });
+          if (!response.ok) {
+            throw new Error(`Failed to upload ${upload.objectKey}`);
+          }
+        }),
+      );
+
+      toast.success(`${data.uploads.length} object(s) uploaded.`);
+      await loadObjects(false, objectSearch, null, browsePrefix);
+    });
+  }
+
+  async function deleteObjectFromBrowse(key: string) {
+    if (!selectedProfileId) {
+      toast.error("Select an OSS profile first.");
+      return;
+    }
+    if (!window.confirm(`Delete ${key} from OSS and archive its history?`)) {
+      return;
+    }
+
+    await runBusy(`delete-object:${key}`, async () => {
+      const data = await api<{ deletedLinks: number }>("/api/objects", {
+        method: "DELETE",
+        body: JSON.stringify({
+          profileId: selectedProfileId,
+          objectKey: key,
+        }),
+      });
+      setObjects((current) => current.filter((object) => object.key !== key));
+      setLinks((current) =>
+        current.filter(
+          (link) => link.profileId !== selectedProfileId || link.objectKey !== key,
+        ),
+      );
+      toast.success(
+        `Object deleted. ${data.deletedLinks} history item(s) archived.`,
+      );
     });
   }
 
@@ -389,14 +546,11 @@ export function DashboardClient({ user }: DashboardClientProps) {
     setProfileDialogOpen(true);
   }
 
-  function openObjectBrowser() {
-    const initialQuery = objectKey;
-    setObjects([]);
-    setObjectSearch(initialQuery);
-    setContinuationToken(null);
-    setNextContinuationToken(undefined);
-    setObjectDialogOpen(true);
-    void loadObjects(false, initialQuery, null);
+  function selectTab(value: string) {
+    setActiveTab(value);
+    if (value === "browse" && selectedProfileId) {
+      void loadObjects(false, objectSearch, null, browsePrefix);
+    }
   }
 
   const isDark = resolvedTheme === "dark";
@@ -472,44 +626,115 @@ export function DashboardClient({ user }: DashboardClientProps) {
       </header>
 
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
-        <Tabs defaultValue="create">
+        <Tabs value={activeTab} onValueChange={selectTab}>
           <TabsList>
-            <TabsTrigger value="create">Generate</TabsTrigger>
-            <TabsTrigger value="profiles">OSS Profiles</TabsTrigger>
+            <TabsTrigger value="browse">Browse</TabsTrigger>
+            {isAdmin && <TabsTrigger value="profiles">OSS Profiles</TabsTrigger>}
             <TabsTrigger value="history">History</TabsTrigger>
+            {isAdmin && <TabsTrigger value="settings">Settings</TabsTrigger>}
           </TabsList>
 
-          <TabsContent value="create">
+          <TabsContent value="browse">
             <Card>
               <CardHeader>
-                <CardTitle>Generate Link</CardTitle>
+                <CardTitle>Browse Objects</CardTitle>
                 <CardDescription>
                   {selectedProfile
-                    ? `${selectedProfile.bucket} · ${selectedProfile.endpoint}`
-                    : "No OSS profile selected"}
+                    ? `${selectedProfile.bucket} · ${currentBrowsePrefix(browsePrefix)}`
+                    : "Select an OSS profile to browse objects"}
                 </CardDescription>
                 <CardAction>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={openNewProfile}
-                  >
-                    <PlusIcon data-icon="inline-start" />
-                    Profile
-                  </Button>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={!selectedProfileId || isBusy("objects-upload")}
+                      onClick={() => singleFileInputRef.current?.click()}
+                    >
+                      <BusyIcon
+                        busy={isBusy("objects-upload")}
+                        idle={<UploadIcon data-icon="inline-start" />}
+                      />
+                      Upload
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={!selectedProfileId || isBusy("objects-upload")}
+                      onClick={() => multiFileInputRef.current?.click()}
+                    >
+                      <FilesIcon data-icon="inline-start" />
+                      Files
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={!selectedProfileId || isBusy("objects-upload")}
+                      onClick={() => folderInputRef.current?.click()}
+                    >
+                      <FolderUpIcon data-icon="inline-start" />
+                      Folder
+                    </Button>
+                  </div>
                 </CardAction>
               </CardHeader>
               <CardContent>
-                <form onSubmit={createLink}>
-                  <FieldGroup>
+                <input
+                  ref={singleFileInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={(event) => {
+                    void uploadSelectedFiles(event.currentTarget.files);
+                    event.currentTarget.value = "";
+                  }}
+                />
+                <input
+                  ref={multiFileInputRef}
+                  type="file"
+                  className="hidden"
+                  multiple
+                  onChange={(event) => {
+                    void uploadSelectedFiles(event.currentTarget.files);
+                    event.currentTarget.value = "";
+                  }}
+                />
+                <input
+                  ref={(element) => {
+                    folderInputRef.current = element;
+                    element?.setAttribute("webkitdirectory", "");
+                    element?.setAttribute("directory", "");
+                  }}
+                  type="file"
+                  className="hidden"
+                  multiple
+                  onChange={(event) => {
+                    void uploadSelectedFiles(event.currentTarget.files);
+                    event.currentTarget.value = "";
+                  }}
+                />
+                <div className="flex flex-col gap-4">
+                  <div className="grid gap-4 md:grid-cols-[1.1fr_1fr_1fr_auto]">
                     <Field>
                       <FieldLabel>OSS profile</FieldLabel>
                       <Select
                         value={selectedProfileId}
-                        onValueChange={(value) =>
-                          setSelectedProfileId(value ?? "")
-                        }
+                        onValueChange={(value) => {
+                          const nextProfileId = value ?? "";
+                          setSelectedProfileId(nextProfileId);
+                          setObjects([]);
+                          setContinuationToken(null);
+                          setNextContinuationToken(undefined);
+                          void loadObjects(
+                            false,
+                            objectSearch,
+                            null,
+                            browsePrefix,
+                            nextProfileId,
+                          );
+                        }}
                       >
                         <SelectTrigger className="w-full">
                           <SelectValue placeholder="Select profile" />
@@ -526,91 +751,81 @@ export function DashboardClient({ user }: DashboardClientProps) {
                       </Select>
                     </Field>
                     <Field>
-                      <FieldLabel>Object key</FieldLabel>
-                      <InputGroup>
-                        <InputGroupInput
-                          value={objectKey}
-                          onChange={(event) => setObjectKey(event.target.value)}
-                          placeholder="archives/report.zip"
-                          required
-                        />
-                        <InputGroupAddon align="inline-end">
-                          <InputGroupButton
-                            onClick={openObjectBrowser}
-                            disabled={
-                              !selectedProfileId || isBusy("objects-search")
-                            }
-                          >
-                            <BusyIcon
-                              busy={isBusy("objects-search")}
-                              idle={<FolderOpenIcon data-icon="inline-start" />}
-                            />
-                            Browse
-                          </InputGroupButton>
-                        </InputGroupAddon>
-                      </InputGroup>
+                      <FieldLabel>Directory</FieldLabel>
+                      <Input
+                        value={browsePrefix}
+                        onChange={(event) => setBrowsePrefix(event.target.value)}
+                        placeholder="archives/"
+                      />
                     </Field>
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <Field>
-                        <FieldLabel>Valid for</FieldLabel>
-                        <Select
-                          value={validForSeconds}
-                          onValueChange={(value) =>
-                            setValidForSeconds(value ?? "86400")
+                    <Field>
+                      <FieldLabel>Search</FieldLabel>
+                      <Input
+                        value={objectSearch}
+                        onChange={(event) => setObjectSearch(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void loadObjects(false, objectSearch, null, browsePrefix);
                           }
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectGroup>
-                              <SelectItem value="3600">1 hour</SelectItem>
-                              <SelectItem value="86400">1 day</SelectItem>
-                              <SelectItem value="604800">7 days</SelectItem>
-                              <SelectItem value="2592000">30 days</SelectItem>
-                              <SelectItem value="Permanent">
-                                Permanent
-                              </SelectItem>
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                      </Field>
-                      <Field>
-                        <FieldLabel>Max downloads</FieldLabel>
-                        <Input
-                          value={maxDownloads}
-                          onChange={(event) =>
-                            setMaxDownloads(event.target.value)
-                          }
-                          inputMode="numeric"
-                          placeholder="Unlimited"
-                        />
-                      </Field>
-                      <Field>
-                        <FieldLabel>Filename</FieldLabel>
-                        <Input
-                          value={downloadFilename}
-                          onChange={(event) =>
-                            setDownloadFilename(event.target.value)
-                          }
-                          placeholder="Optional"
-                        />
-                      </Field>
-                    </div>
-                    <div className="flex justify-end">
+                        }}
+                        placeholder="Filter current directory"
+                      />
+                    </Field>
+                    <div className="flex items-end">
                       <Button
-                        type="submit"
-                        disabled={isBusy("create-link") || !profiles.length}
+                        type="button"
+                        variant="outline"
+                        className="w-full md:w-auto"
+                        onClick={() =>
+                          loadObjects(false, objectSearch, null, browsePrefix)
+                        }
+                        disabled={!selectedProfileId || isBusy("objects-search")}
                       >
                         <BusyIcon
-                          busy={isBusy("create-link")}
-                          idle={<CopyIcon data-icon="inline-start" />}
+                          busy={isBusy("objects-search")}
+                          idle={<SearchIcon data-icon="inline-start" />}
                         />
-                        Generate and copy
+                        Browse
                       </Button>
                     </div>
-                  </FieldGroup>
-                </form>
+                  </div>
+
+                  <ObjectTable
+                    objects={objects}
+                    prefix={browsePrefix}
+                    onOpenFolder={(prefix) => {
+                      setBrowsePrefix(prefix);
+                      setObjectSearch("");
+                      setContinuationToken(null);
+                      setNextContinuationToken(undefined);
+                      void loadObjects(false, "", null, prefix);
+                    }}
+                    onGenerate={(key) => {
+                      setGeneratingObjectKey(key);
+                      setGenerateDialogOpen(true);
+                    }}
+                    onDelete={deleteObjectFromBrowse}
+                    canDelete
+                    isBusy={isBusy}
+                  />
+                  <div className="flex justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={!nextContinuationToken || isBusy("objects-next")}
+                      onClick={() => loadObjects(true)}
+                    >
+                      {isBusy("objects-next") && (
+                        <Loader2Icon
+                          data-icon="inline-start"
+                          className="animate-spin"
+                        />
+                      )}
+                      Next page
+                    </Button>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -810,6 +1025,66 @@ export function DashboardClient({ user }: DashboardClientProps) {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {isAdmin && (
+            <TabsContent value="settings">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Settings</CardTitle>
+                  <CardDescription>
+                    Configure which OIDC groups map to admin and user access.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <form onSubmit={saveSettings}>
+                    <FieldGroup>
+                      <Field>
+                        <FieldLabel>Admin Group</FieldLabel>
+                        <Input
+                          value={settingsForm.adminGroups}
+                          onChange={(event) =>
+                            setSettingsForm((current) => ({
+                              ...current,
+                              adminGroups: event.target.value,
+                            }))
+                          }
+                          placeholder="admin"
+                        />
+                        <FieldDescription>
+                          Members can manage settings, OSS profiles, all files, and history.
+                        </FieldDescription>
+                      </Field>
+                      <Field>
+                        <FieldLabel>User Group</FieldLabel>
+                        <Input
+                          value={settingsForm.userGroups}
+                          onChange={(event) =>
+                            setSettingsForm((current) => ({
+                              ...current,
+                              userGroups: event.target.value,
+                            }))
+                          }
+                          placeholder="users"
+                        />
+                        <FieldDescription>
+                          Members can browse and share only files they uploaded.
+                        </FieldDescription>
+                      </Field>
+                      <div className="flex justify-end">
+                        <Button type="submit" disabled={isBusy("save-settings")}>
+                          <BusyIcon
+                            busy={isBusy("save-settings")}
+                            idle={<CheckCircleIcon data-icon="inline-start" />}
+                          />
+                          Save settings
+                        </Button>
+                      </div>
+                    </FieldGroup>
+                  </form>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
         </Tabs>
       </div>
 
@@ -957,107 +1232,82 @@ export function DashboardClient({ user }: DashboardClientProps) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={objectDialogOpen} onOpenChange={setObjectDialogOpen}>
-        <DialogContent className="sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Object Browser</DialogTitle>
-            <DialogDescription>
-              {selectedProfile
-                ? `${selectedProfile.name} · ${selectedProfile.bucket}`
-                : "Select an OSS profile"}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-4">
-            <InputGroup>
-              <InputGroupAddon>
-                <SearchIcon />
-              </InputGroupAddon>
-              <InputGroupInput
-                value={objectSearch}
-                onChange={(event) => setObjectSearch(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    void loadObjects(false, objectSearch, null);
-                  }
-                }}
-                placeholder="Search by object key"
-              />
-              <InputGroupAddon align="inline-end">
-                <InputGroupButton
-                  onClick={() => loadObjects(false, objectSearch, null)}
-                  disabled={isBusy("objects-search")}
-                >
-                  <BusyIcon
-                    busy={isBusy("objects-search")}
-                    idle={<SearchIcon data-icon="inline-start" />}
-                  />
-                  Search
-                </InputGroupButton>
-              </InputGroupAddon>
-            </InputGroup>
-            <div className="max-h-96 overflow-auto rounded-lg border">
-              {objects.length ? (
-                <Table>
-                  <TableBody>
-                    {objects.map((object) => (
-                      <TableRow key={object.key}>
-                        <TableCell className="max-w-lg truncate font-medium">
-                          {object.key}
-                        </TableCell>
-                        <TableCell>{formatBytes(object.size)}</TableCell>
-                        <TableCell>{object.storageClass ?? ""}</TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setObjectKey(object.key);
-                              setObjectDialogOpen(false);
-                            }}
-                          >
-                            Select
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              ) : (
-                <Empty>
-                  <EmptyHeader>
-                    <EmptyMedia variant="icon">
-                      <SearchIcon />
-                    </EmptyMedia>
-                    <EmptyTitle>No objects</EmptyTitle>
-                    <EmptyDescription>
-                      Matching objects will appear here.
-                    </EmptyDescription>
-                  </EmptyHeader>
-                </Empty>
-              )}
+      <Dialog open={generateDialogOpen} onOpenChange={setGenerateDialogOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <form onSubmit={createLink}>
+            <DialogHeader>
+              <DialogTitle>Generate Link</DialogTitle>
+              <DialogDescription className="truncate">
+                {generatingObjectKey || "Select an object from Browse"}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <FieldGroup>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <Field>
+                    <FieldLabel>Valid for</FieldLabel>
+                    <Select
+                      value={validForSeconds}
+                      onValueChange={(value) =>
+                        setValidForSeconds(value ?? "86400")
+                      }
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="3600">1 hour</SelectItem>
+                          <SelectItem value="86400">1 day</SelectItem>
+                          <SelectItem value="604800">7 days</SelectItem>
+                          <SelectItem value="2592000">30 days</SelectItem>
+                          <SelectItem value="Permanent">Permanent</SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field>
+                    <FieldLabel>Max downloads</FieldLabel>
+                    <Input
+                      value={maxDownloads}
+                      onChange={(event) => setMaxDownloads(event.target.value)}
+                      inputMode="numeric"
+                      placeholder="Unlimited"
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel>Filename</FieldLabel>
+                    <Input
+                      value={downloadFilename}
+                      onChange={(event) =>
+                        setDownloadFilename(event.target.value)
+                      }
+                      placeholder="Optional"
+                    />
+                  </Field>
+                </div>
+              </FieldGroup>
             </div>
-          </div>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={!nextContinuationToken || isBusy("objects-next")}
-              onClick={() => loadObjects(true)}
-            >
-              {isBusy("objects-next") && (
-                <Loader2Icon
-                  data-icon="inline-start"
-                  className="animate-spin"
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setGenerateDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isBusy("create-link") || !generatingObjectKey}
+              >
+                <BusyIcon
+                  busy={isBusy("create-link")}
+                  idle={<CopyIcon data-icon="inline-start" />}
                 />
-              )}
-              Next page
-            </Button>
-            <Button type="button" onClick={() => setObjectDialogOpen(false)}>
-              Done
-            </Button>
-          </DialogFooter>
+                Generate and copy
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </main>
@@ -1140,6 +1390,109 @@ function ProfileActions({
   );
 }
 
+function ObjectTable({
+  objects,
+  prefix,
+  onOpenFolder,
+  onGenerate,
+  onDelete,
+  canDelete,
+  isBusy,
+}: {
+  objects: ObjectInfo[];
+  prefix: string;
+  onOpenFolder: (prefix: string) => void;
+  onGenerate: (key: string) => void;
+  onDelete: (key: string) => void;
+  canDelete: boolean;
+  isBusy: (key: string) => boolean;
+}) {
+  if (!objects.length) {
+    return (
+      <div className="rounded-lg border">
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <SearchIcon />
+            </EmptyMedia>
+            <EmptyTitle>No objects</EmptyTitle>
+            <EmptyDescription>Matching objects will appear here.</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-h-96 overflow-auto rounded-lg border">
+      <Table>
+        <TableBody>
+          {objects.map((object) => {
+            const isFolder = object.kind === "folder";
+            return (
+              <TableRow key={object.key}>
+                <TableCell className="max-w-lg truncate font-medium">
+                  <div className="flex min-w-0 items-center gap-2">
+                    {isFolder ? (
+                      <FolderOpenIcon className="size-4 shrink-0 text-muted-foreground" />
+                    ) : (
+                      <FileIcon className="size-4 shrink-0 text-muted-foreground" />
+                    )}
+                    <span className="truncate">
+                      {relativeObjectName(object.key, prefix)}
+                    </span>
+                  </div>
+                </TableCell>
+                <TableCell>{isFolder ? "" : formatBytes(object.size)}</TableCell>
+                <TableCell>{isFolder ? "Folder" : (object.storageClass ?? "")}</TableCell>
+                <TableCell className="text-right">
+                  {isFolder ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onOpenFolder(object.key)}
+                    >
+                      Open
+                    </Button>
+                  ) : (
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => onGenerate(object.key)}
+                      >
+                        <CopyIcon data-icon="inline-start" />
+                        Generate
+                      </Button>
+                      {canDelete && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="destructive"
+                          disabled={isBusy(`delete-object:${object.key}`)}
+                          onClick={() => onDelete(object.key)}
+                        >
+                          <BusyIcon
+                            busy={isBusy(`delete-object:${object.key}`)}
+                            idle={<Trash2Icon data-icon="inline-start" />}
+                          />
+                          Delete
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
 function BusyIcon({ busy, idle }: { busy: boolean; idle: ReactNode }) {
   if (busy) {
     return <Loader2Icon data-icon="inline-start" className="animate-spin" />;
@@ -1212,4 +1565,31 @@ function formatBytes(value: number) {
     unit += 1;
   }
   return `${size.toFixed(size >= 10 ? 0 : 1)} ${units[unit]}`;
+}
+
+function currentBrowsePrefix(prefix: string) {
+  const cleaned = prefix.trim();
+  if (!cleaned) {
+    return "/";
+  }
+
+  return cleaned.endsWith("/") ? cleaned : `${cleaned}/`;
+}
+
+function relativeObjectName(key: string, prefix: string) {
+  const normalizedPrefix = currentBrowsePrefix(prefix);
+  if (normalizedPrefix === "/") {
+    return key;
+  }
+
+  return key.startsWith(normalizedPrefix)
+    ? key.slice(normalizedPrefix.length)
+    : key;
+}
+
+function parseGroupInput(value: string) {
+  return value
+    .split(/[,\s]+/)
+    .map((group) => group.trim())
+    .filter(Boolean);
 }

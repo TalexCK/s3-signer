@@ -1,9 +1,11 @@
 import "server-only";
 
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
   ListObjectsV2Command,
+  PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -48,10 +50,11 @@ export async function testProfile(profile: OssProfile) {
 
 export async function listObjects(
   profile: OssProfile,
-  options: { query?: string; continuationToken?: string }
+  options: { query?: string; prefix?: string; continuationToken?: string }
 ) {
   const client = createClient(profile);
   const query = options.query?.trim().toLowerCase() ?? "";
+  const prefix = normalizePrefix(options.prefix);
   const maxMatches = 100;
   const maxPages = query ? 20 : 1;
   let continuationToken = options.continuationToken;
@@ -64,13 +67,24 @@ export async function listObjects(
       new ListObjectsV2Command({
         Bucket: profile.bucket,
         ContinuationToken: continuationToken,
+        Delimiter: "/",
         MaxKeys: 100,
+        Prefix: prefix || undefined,
       })
     );
 
+    const folders =
+      result.CommonPrefixes?.map<ObjectInfo>((item) => ({
+        key: item.Prefix ?? "",
+        kind: "folder",
+        lastModified: null,
+        size: 0,
+        storageClass: null,
+      })).filter((object) => object.key.length > 0) ?? [];
     const pageObjects =
       result.Contents?.map<ObjectInfo>((object) => ({
         key: object.Key ?? "",
+        kind: "file",
         lastModified: object.LastModified?.toISOString() ?? null,
         size: object.Size ?? 0,
         storageClass: object.StorageClass ?? null,
@@ -79,7 +93,11 @@ export async function listObjects(
           object.key.length > 0 && (!query || object.key.toLowerCase().includes(query))
       ) ?? [];
 
-    objects.push(...pageObjects.slice(0, maxMatches - objects.length));
+    const entries = [...folders, ...pageObjects].filter(
+      (object) =>
+        !query || object.key.toLowerCase().includes(query)
+    );
+    objects.push(...entries.slice(0, maxMatches - objects.length));
     isTruncated = result.IsTruncated ?? false;
     nextContinuationToken = result.NextContinuationToken;
 
@@ -95,6 +113,35 @@ export async function listObjects(
     isTruncated,
     nextContinuationToken,
   };
+}
+
+export async function signUploadUrl(
+  profile: OssProfile,
+  objectKey: string,
+  contentType?: string | null
+) {
+  const client = createClient(profile);
+  return getSignedUrl(
+    client,
+    new PutObjectCommand({
+      Bucket: profile.bucket,
+      Key: objectKey,
+      ContentType: contentType || undefined,
+    }),
+    {
+      expiresIn: getAppConfig().signedUrlTtlSeconds,
+    }
+  );
+}
+
+export async function deleteObject(profile: OssProfile, objectKey: string) {
+  const client = createClient(profile);
+  await client.send(
+    new DeleteObjectCommand({
+      Bucket: profile.bucket,
+      Key: objectKey,
+    })
+  );
 }
 
 export async function signDownloadUrl(
@@ -131,4 +178,13 @@ function buildDisposition(filename?: string | null) {
   }
 
   return `attachment; filename="${cleaned}"`;
+}
+
+function normalizePrefix(prefix?: string) {
+  const cleaned = prefix?.replace(/^\/+/, "").trim() ?? "";
+  if (!cleaned) {
+    return "";
+  }
+
+  return cleaned.endsWith("/") ? cleaned : `${cleaned}/`;
 }

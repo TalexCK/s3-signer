@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { HttpError, jsonError } from "@/lib/api";
-import { requireUser } from "@/lib/auth";
+import { requireAdmin } from "@/lib/auth";
 import { mapProfile, withTransaction } from "@/lib/db";
 import { publicProfile } from "@/lib/serializers";
 
@@ -12,21 +12,20 @@ interface RouteContext {
 
 export async function POST(_request: Request, context: RouteContext) {
   try {
-    const user = await requireUser();
+    await requireAdmin();
     const { id } = await context.params;
 
     const profile = await withTransaction(async (client) => {
       const existing = await client.query(
-        "SELECT id FROM oss_profiles WHERE id = $1 AND owner_sub = $2 AND disabled_at IS NULL",
-        [id, user.id]
+        "SELECT id FROM oss_profiles WHERE id = $1 AND disabled_at IS NULL",
+        [id]
       );
       if (existing.rowCount === 0) {
         throw new HttpError(404, "OSS profile not found");
       }
 
       await client.query(
-        "UPDATE oss_profiles SET is_default = false WHERE owner_sub = $1",
-        [user.id]
+        "UPDATE oss_profiles SET is_default = false WHERE disabled_at IS NULL"
       );
       const result = await client.query(
         "UPDATE oss_profiles SET is_default = true, updated_at = now() WHERE id = $1 RETURNING *",

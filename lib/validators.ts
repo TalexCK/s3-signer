@@ -44,5 +44,30 @@ export const createLinkSchema = z.object({
 export const listObjectsSchema = z.object({
   profileId: z.string().uuid(),
   query: z.string().trim().max(1024).optional().default(""),
+  prefix: z.string().trim().max(2048).optional().default(""),
   continuationToken: z.string().max(4096).optional(),
+});
+
+export const uploadObjectsSchema = z.object({
+  profileId: z.string().uuid(),
+  files: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1).max(2048),
+        contentType: z.string().trim().max(255).optional().nullable(),
+      })
+    )
+    .min(1)
+    .max(100),
+  prefix: z.string().trim().max(2048).optional().default(""),
+});
+
+export const deleteObjectSchema = z.object({
+  profileId: z.string().uuid(),
+  objectKey: z.string().trim().min(1).max(2048),
+});
+
+export const accessSettingsSchema = z.object({
+  adminGroups: z.array(z.string().trim().min(1).max(255)).min(1).max(100),
+  userGroups: z.array(z.string().trim().min(1).max(255)).max(100),
 });

@@ -39,11 +39,21 @@ export async function POST(request: Request) {
 
     const link = await withTransaction(async (client) => {
       const profileResult = await client.query(
-        "SELECT * FROM oss_profiles WHERE id = $1 AND owner_sub = $2 AND disabled_at IS NULL",
-        [payload.profileId, user.id]
+        "SELECT * FROM oss_profiles WHERE id = $1 AND disabled_at IS NULL",
+        [payload.profileId]
       );
       if (profileResult.rowCount === 0) {
         throw new HttpError(404, "OSS profile not found");
+      }
+      if (user.role !== "admin") {
+        const ownedObject = await client.query(
+          `SELECT 1 FROM object_uploads
+           WHERE oss_profile_id = $1 AND object_key = $2 AND owner_sub = $3`,
+          [payload.profileId, payload.objectKey, user.id]
+        );
+        if (ownedObject.rowCount === 0) {
+          throw new HttpError(403, "Object is not owned by this user");
+        }
       }
 
       const profile = mapProfile(profileResult.rows[0]);

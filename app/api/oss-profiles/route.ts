@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { HttpError, jsonError } from "@/lib/api";
-import { requireUser } from "@/lib/auth";
+import { requireAdmin, requireUser } from "@/lib/auth";
 import { encryptSecret } from "@/lib/crypto";
 import { mapProfile, query, withTransaction } from "@/lib/db";
 import { publicProfile } from "@/lib/serializers";
@@ -11,12 +11,12 @@ export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    const user = await requireUser();
+    await requireUser();
     const result = await query(
       `SELECT * FROM oss_profiles
-       WHERE owner_sub = $1 AND disabled_at IS NULL
+       WHERE disabled_at IS NULL
        ORDER BY is_default DESC, created_at DESC`,
-      [user.id]
+      []
     );
 
     return NextResponse.json({
@@ -29,20 +29,18 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const user = await requireUser();
+    const user = await requireAdmin();
     const payload = createProfileSchema.parse(await request.json());
 
     const profile = await withTransaction(async (client) => {
       const count = await client.query(
-        "SELECT count(*)::int AS count FROM oss_profiles WHERE owner_sub = $1 AND disabled_at IS NULL",
-        [user.id]
+        "SELECT count(*)::int AS count FROM oss_profiles WHERE disabled_at IS NULL"
       );
       const shouldDefault = payload.isDefault || count.rows[0]?.count === 0;
 
       if (shouldDefault) {
         await client.query(
-          "UPDATE oss_profiles SET is_default = false WHERE owner_sub = $1",
-          [user.id]
+          "UPDATE oss_profiles SET is_default = false WHERE disabled_at IS NULL"
         );
       }
 
