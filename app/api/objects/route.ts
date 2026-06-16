@@ -1,16 +1,14 @@
 import { NextResponse } from "next/server";
 import { HttpError, jsonError } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
-import { mapProfile, query, withTransaction } from "@/lib/db";
+import { mapProfile, query } from "@/lib/db";
 import {
   createFolderObject,
-  deleteObject,
   listObjects,
   signUploadUrl,
 } from "@/lib/s3";
 import {
   createFolderSchema,
-  deleteObjectSchema,
   listObjectsSchema,
   uploadObjectsSchema,
 } from "@/lib/validators";
@@ -142,66 +140,11 @@ export async function PUT(request: Request) {
   }
 }
 
-export async function DELETE(request: Request) {
+export async function DELETE() {
   try {
-    const user = await requireUser();
-    const payload = deleteObjectSchema.parse(await request.json());
-
-    const deletedLinks = await withTransaction(async (client) => {
-      const profileResult = await client.query(
-        "SELECT * FROM oss_profiles WHERE id = $1 AND disabled_at IS NULL",
-        [payload.profileId]
-      );
-      if (profileResult.rowCount === 0) {
-        throw new HttpError(404, "OSS profile not found");
-      }
-      if (user.role !== "admin") {
-        const ownedObject = await client.query(
-          `SELECT 1 FROM object_uploads
-           WHERE oss_profile_id = $1 AND object_key = $2 AND owner_sub = $3`,
-          [payload.profileId, payload.objectKey, user.id]
-        );
-        if (ownedObject.rowCount === 0) {
-          throw new HttpError(403, "Object is not owned by this user");
-        }
-      }
-
-      await deleteObject(mapProfile(profileResult.rows[0]), payload.objectKey);
-
-      const result =
-        user.role === "admin"
-          ? await client.query(
-              `UPDATE download_links
-               SET deleted_at = now()
-               WHERE oss_profile_id = $1
-                 AND object_key = $2
-                 AND deleted_at IS NULL
-               RETURNING id`,
-              [payload.profileId, payload.objectKey]
-            )
-          : await client.query(
-              `UPDATE download_links
-               SET deleted_at = now()
-               WHERE owner_sub = $1
-                 AND oss_profile_id = $2
-                 AND object_key = $3
-                 AND deleted_at IS NULL
-               RETURNING id`,
-              [user.id, payload.profileId, payload.objectKey]
-            );
-      await client.query(
-        "DELETE FROM object_uploads WHERE oss_profile_id = $1 AND object_key = $2",
-        [payload.profileId, payload.objectKey]
-      );
-
-      return result.rowCount ?? 0;
-    });
-
-    return NextResponse.json({ deletedLinks });
+    await requireUser();
+    throw new HttpError(403, "Object deletion is disabled");
   } catch (error) {
-    if (error instanceof SyntaxError) {
-      return jsonError(new HttpError(400, "Invalid JSON"));
-    }
     return jsonError(error);
   }
 }

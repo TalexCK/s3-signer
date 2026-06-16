@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { HttpError, jsonError } from "@/lib/api";
 import { requireAdmin } from "@/lib/auth";
 import { encryptSecret } from "@/lib/crypto";
-import { mapProfile, query, withTransaction } from "@/lib/db";
+import { mapProfile, query } from "@/lib/db";
 import { publicProfile } from "@/lib/serializers";
 import { updateProfileSchema } from "@/lib/validators";
 
@@ -66,51 +66,10 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 }
 
-export async function DELETE(_request: Request, context: RouteContext) {
+export async function DELETE() {
   try {
     await requireAdmin();
-    const { id } = await context.params;
-
-    const profile = await withTransaction(async (client) => {
-      const existing = await client.query(
-        "SELECT is_default FROM oss_profiles WHERE id = $1 AND disabled_at IS NULL FOR UPDATE",
-        [id]
-      );
-      if (existing.rowCount === 0) {
-        throw new HttpError(404, "OSS profile not found");
-      }
-
-      const wasDefault = !!existing.rows[0].is_default;
-      await client.query(
-        `UPDATE oss_profiles
-         SET disabled_at = COALESCE(disabled_at, now()), is_default = false, updated_at = now()
-         WHERE id = $1
-         RETURNING *`,
-        [id]
-      );
-      if (!wasDefault) {
-        return null;
-      }
-
-      const nextDefault = await client.query(
-        `UPDATE oss_profiles
-         SET is_default = true, updated_at = now()
-         WHERE id = (
-           SELECT id FROM oss_profiles
-           WHERE disabled_at IS NULL
-           ORDER BY created_at DESC
-           LIMIT 1
-         )
-         RETURNING *`,
-      );
-
-      return nextDefault.rowCount ? mapProfile(nextDefault.rows[0]) : null;
-    });
-
-    return NextResponse.json({
-      ok: true,
-      defaultProfile: profile ? publicProfile(profile) : null,
-    });
+    throw new HttpError(403, "OSS profile deletion is disabled");
   } catch (error) {
     return jsonError(error);
   }

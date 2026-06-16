@@ -34,23 +34,10 @@ export async function GET(_request: Request, context: RouteContext) {
   }
 }
 
-export async function DELETE(_request: Request, context: RouteContext) {
+export async function DELETE() {
   try {
-    const user = await requireUser();
-    const { id } = await context.params;
-
-    const result = await query(
-      `UPDATE download_links
-       SET deleted_at = COALESCE(deleted_at, now())
-       WHERE id = $1 AND owner_sub = $2
-       RETURNING id`,
-      [id, user.id]
-    );
-    if (result.rowCount === 0) {
-      throw new HttpError(404, "Download link not found");
-    }
-
-    return NextResponse.json({ ok: true });
+    await requireUser();
+    throw new HttpError(403, "Link deletion is disabled");
   } catch (error) {
     return jsonError(error);
   }

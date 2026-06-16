@@ -26,7 +26,6 @@ import {
   RefreshCwIcon,
   SearchIcon,
   SunIcon,
-  Trash2Icon,
   UploadIcon,
 } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -471,57 +470,6 @@ export function DashboardClient({ user }: DashboardClientProps) {
     });
   }
 
-  async function deleteObjectFromBrowse(key: string) {
-    if (!selectedProfileId) {
-      toast.error("Select an OSS profile first.");
-      return;
-    }
-    if (!window.confirm(`Delete ${key} from OSS and archive its history?`)) {
-      return;
-    }
-
-    await runBusy(`delete-object:${key}`, async () => {
-      const data = await api<{ deletedLinks: number }>("/api/objects", {
-        method: "DELETE",
-        body: JSON.stringify({
-          profileId: selectedProfileId,
-          objectKey: key,
-        }),
-      });
-      setObjects((current) => current.filter((object) => object.key !== key));
-      setLinks((current) =>
-        current.filter(
-          (link) => link.profileId !== selectedProfileId || link.objectKey !== key,
-        ),
-      );
-      toast.success(
-        `Object deleted. ${data.deletedLinks} history item(s) archived.`,
-      );
-    });
-  }
-
-  async function deleteLink(link: LinkResponse) {
-    if (!window.confirm(`Delete link for ${link.objectKey}?`)) {
-      return;
-    }
-    await runBusy(`delete-link:${link.id}`, async () => {
-      await api(`/api/links/${link.id}`, { method: "DELETE" });
-      setLinks((current) => current.filter((item) => item.id !== link.id));
-      toast.success("Download link deleted.");
-    });
-  }
-
-  async function deleteProfile(profile: PublicOssProfile) {
-    if (!window.confirm(`Disable profile ${profile.name}?`)) {
-      return;
-    }
-    await runBusy(`delete-profile:${profile.id}`, async () => {
-      await api(`/api/oss-profiles/${profile.id}`, { method: "DELETE" });
-      await refreshProfiles();
-      toast.success("OSS profile disabled.");
-    });
-  }
-
   async function setDefaultProfile(profile: PublicOssProfile) {
     await runBusy(`default-profile:${profile.id}`, async () => {
       await api(`/api/oss-profiles/${profile.id}/default`, { method: "POST" });
@@ -541,16 +489,6 @@ export function DashboardClient({ user }: DashboardClientProps) {
     await runBusy(`copy-link:${id}`, async () => {
       await copyText(url);
       toast.success("Download link copied.");
-    });
-  }
-
-  async function cleanupLinks() {
-    await runBusy("cleanup-links", async () => {
-      const data = await api<{ deletedCount: number }>("/api/links/cleanup", {
-        method: "POST",
-      });
-      await refreshLinks();
-      toast.success(`${data.deletedCount} inactive links archived.`);
     });
   }
 
@@ -805,9 +743,6 @@ export function DashboardClient({ user }: DashboardClientProps) {
                       setGeneratingObjectKey(key);
                       setGenerateDialogOpen(true);
                     }}
-                    onDelete={deleteObjectFromBrowse}
-                    canDelete
-                    isBusy={isBusy}
                   />
                   <div className="flex justify-end">
                     <Button
@@ -879,7 +814,6 @@ export function DashboardClient({ user }: DashboardClientProps) {
                               onEdit={openEditProfile}
                               onTest={testProfile}
                               onDefault={setDefaultProfile}
-                              onDelete={deleteProfile}
                               isBusy={isBusy}
                             />
                           </TableCell>
@@ -915,21 +849,6 @@ export function DashboardClient({ user }: DashboardClientProps) {
               <CardHeader>
                 <CardTitle>History</CardTitle>
                 <CardDescription>{links.length} recent links</CardDescription>
-                <CardAction>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={cleanupLinks}
-                    disabled={isBusy("cleanup-links")}
-                  >
-                    <BusyIcon
-                      busy={isBusy("cleanup-links")}
-                      idle={<Trash2Icon data-icon="inline-start" />}
-                    />
-                    Cleanup
-                  </Button>
-                </CardAction>
               </CardHeader>
               <CardContent>
                 {links.length ? (
@@ -960,7 +879,7 @@ export function DashboardClient({ user }: DashboardClientProps) {
                             <LinkStatus link={link} />
                           </TableCell>
                           <TableCell className="text-right">
-                            <div className="flex justify-end gap-2">
+                            <div className="flex justify-end">
                               <Tooltip>
                                 <TooltipTrigger
                                   render={
@@ -981,27 +900,6 @@ export function DashboardClient({ user }: DashboardClientProps) {
                                   <span className="sr-only">Copy</span>
                                 </TooltipTrigger>
                                 <TooltipContent>Copy</TooltipContent>
-                              </Tooltip>
-                              <Tooltip>
-                                <TooltipTrigger
-                                  render={
-                                    <Button
-                                      variant="destructive"
-                                      size="icon-xs"
-                                      onClick={() => deleteLink(link)}
-                                      disabled={isBusy(
-                                        `delete-link:${link.id}`,
-                                      )}
-                                    />
-                                  }
-                                >
-                                  <BusyIcon
-                                    busy={isBusy(`delete-link:${link.id}`)}
-                                    idle={<Trash2Icon />}
-                                  />
-                                  <span className="sr-only">Delete</span>
-                                </TooltipTrigger>
-                                <TooltipContent>Delete</TooltipContent>
                               </Tooltip>
                             </div>
                           </TableCell>
@@ -1372,19 +1270,16 @@ function ProfileActions({
   onEdit,
   onTest,
   onDefault,
-  onDelete,
   isBusy,
 }: {
   profile: PublicOssProfile;
   onEdit: (profile: PublicOssProfile) => void;
   onTest: (profile: PublicOssProfile) => void;
   onDefault: (profile: PublicOssProfile) => void;
-  onDelete: (profile: PublicOssProfile) => void;
   isBusy: (key: string) => boolean;
 }) {
   const testing = isBusy(`test-profile:${profile.id}`);
   const settingDefault = isBusy(`default-profile:${profile.id}`);
-  const deleting = isBusy(`delete-profile:${profile.id}`);
 
   return (
     <DropdownMenu>
@@ -1394,10 +1289,10 @@ function ProfileActions({
             type="button"
             variant="ghost"
             size="icon-sm"
-            disabled={testing || settingDefault || deleting}
+            disabled={testing || settingDefault}
           >
             <BusyIcon
-              busy={testing || settingDefault || deleting}
+              busy={testing || settingDefault}
               idle={<MoreHorizontalIcon />}
             />
             <span className="sr-only">Open actions</span>
@@ -1422,14 +1317,6 @@ function ProfileActions({
               Set default
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem
-            variant="destructive"
-            disabled={deleting}
-            onClick={() => onDelete(profile)}
-          >
-            {deleting && <Loader2Icon className="animate-spin" />}
-            Disable
-          </DropdownMenuItem>
         </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -1441,17 +1328,11 @@ function ObjectTable({
   prefix,
   onOpenFolder,
   onGenerate,
-  onDelete,
-  canDelete,
-  isBusy,
 }: {
   objects: ObjectInfo[];
   prefix: string;
   onOpenFolder: (prefix: string) => void;
   onGenerate: (key: string) => void;
-  onDelete: (key: string) => void;
-  canDelete: boolean;
-  isBusy: (key: string) => boolean;
 }) {
   if (!objects.length) {
     return (
@@ -1476,7 +1357,23 @@ function ObjectTable({
           {objects.map((object) => {
             const isFolder = object.kind === "folder";
             return (
-              <TableRow key={object.key}>
+              <TableRow
+                key={object.key}
+                className={isFolder ? "cursor-pointer" : undefined}
+                role={isFolder ? "button" : undefined}
+                tabIndex={isFolder ? 0 : undefined}
+                onClick={isFolder ? () => onOpenFolder(object.key) : undefined}
+                onKeyDown={
+                  isFolder
+                    ? (event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          onOpenFolder(object.key);
+                        }
+                      }
+                    : undefined
+                }
+              >
                 <TableCell className="max-w-lg truncate font-medium">
                   <div className="flex min-w-0 items-center gap-2">
                     {isFolder ? (
@@ -1492,16 +1389,7 @@ function ObjectTable({
                 <TableCell>{isFolder ? "" : formatBytes(object.size)}</TableCell>
                 <TableCell>{isFolder ? "Folder" : (object.storageClass ?? "")}</TableCell>
                 <TableCell className="text-right">
-                  {isFolder ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => onOpenFolder(object.key)}
-                    >
-                      Open
-                    </Button>
-                  ) : (
+                  {!isFolder && (
                     <div className="flex justify-end gap-2">
                       <Button
                         type="button"
@@ -1512,21 +1400,6 @@ function ObjectTable({
                         <CopyIcon data-icon="inline-start" />
                         Generate
                       </Button>
-                      {canDelete && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="destructive"
-                          disabled={isBusy(`delete-object:${object.key}`)}
-                          onClick={() => onDelete(object.key)}
-                        >
-                          <BusyIcon
-                            busy={isBusy(`delete-object:${object.key}`)}
-                            idle={<Trash2Icon data-icon="inline-start" />}
-                          />
-                          Delete
-                        </Button>
-                      )}
                     </div>
                   )}
                 </TableCell>
